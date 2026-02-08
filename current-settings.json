@@ -1,0 +1,77 @@
+[
+  {
+    "value": "REDACTED"
+    "slotSetting": false,
+    "value": "production"
+  },
+  {
+    "name": "PORT",
+    "slotSetting": false,
+    "value": "8080"
+  },
+  {
+    "name": "DB_HOST",
+    "slotSetting": false,
+    "value": "newspace-newsletter-db.postgres.database.azure.com"
+  },
+  {
+    "name": "DB_PORT",
+    "slotSetting": false,
+    "value": "5432"
+  },
+  {
+    "name": "DB_NAME",
+    "slotSetting": false,
+    "value": "newsletter_db"
+  },
+  {
+    "name": "DB_USER",
+    "slotSetting": false,
+    "value": "adminuser"
+  },
+  {
+    "name": "DB_PASSWORD",
+    "slotSetting": false,
+    "value": "NewsSpace2026Pass"
+  },
+  {
+    "name": "DB_SSL",
+    "slotSetting": false,
+    "value": "true"
+  },
+  {
+    "name": "AZURE_COMMUNICATION_CONNECTION_STRING",
+    "slotSetting": false,
+    "value": "endpoint=https://newspace-newsletter-acs.unitedstates.communication.azure.com/;accesskey=REDACTED"
+  },
+  {
+    "name": "SENDER_EMAIL",
+    "slotSetting": false,
+    "value": "DoNotReply@newspace-newsletter-acs.azurecomm.net"
+  },
+  {
+    "name": "APP_URL",
+    "slotSetting": false,
+    "value": "https://newspace-newsletter-api.azurewebsites.net"
+  },
+  {
+    "name": "WEBSITE_HTTPLOGGING_RETENTION_DAYS",
+    "slotSetting": false,
+    "value": "3"
+  },
+  {
+    "name": "NEWSLETTER_FREQUENCY",
+    "slotSetting": false,
+    "value": "weekly"
+  },
+  {
+    "name": "MAX_ARTICLES_PER_NEWSLETTER",
+    "slotSetting": false,
+    "value": "10"
+  },
+  {
+    "name": "ALLOWED_ORIGINS",
+    "slotSetting": false,
+    "value": "https://newspace-newsletter-api.azurewebsites.net"
+  }
+]

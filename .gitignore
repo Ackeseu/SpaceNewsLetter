@@ -40,6 +40,8 @@ azure-functions/.env
 # Azure deployment logs/artifacts
 azure-logs*
 deploy*.zip
+azure-functions/dist/
+functionapp.zip
 
 # Test coverage
 coverage/

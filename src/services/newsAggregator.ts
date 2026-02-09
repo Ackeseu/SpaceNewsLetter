@@ -35,6 +35,13 @@ const RSS_FEEDS: RSSFeed[] = [
     source: 'Spaceflight Now',
     category: ['space', 'launches', 'business']
   },
+  // Asia Space News Sources
+  {
+    url: 'https://www.spacedaily.com/dragonspace.html',
+    source: 'Space Daily - Dragon Space (Asia)',
+    category: ['space', 'asia', 'business', 'news'],
+    region: 'asia'
+  },
   // China Space News Sources
   {
     url: 'https://www.globaltimes.cn/rss/outbrain.xml',

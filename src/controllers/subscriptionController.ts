@@ -4,6 +4,16 @@ import Subscriber from '../models/Subscriber';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '../services/emailService';
 
+const requireAdminToken = (req: Request, res: Response): boolean => {
+  const adminToken = process.env.ADMIN_TEST_TOKEN;
+  const providedToken = req.header('x-admin-token') || req.query.token;
+  if (adminToken && providedToken !== adminToken) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+};
+
 export const subscribe = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
@@ -190,5 +200,32 @@ export const updatePreferences = async (req: Request, res: Response): Promise<vo
   } catch (error) {
     console.error('Update preferences error:', error);
     res.status(500).json({ error: 'Failed to update preferences' });
+  }
+};
+
+export const getSubscriberStats = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const [total, active, verified, activeVerified, unsubscribed] = await Promise.all([
+      Subscriber.count(),
+      Subscriber.count({ where: { isActive: true } }),
+      Subscriber.count({ where: { isVerified: true } }),
+      Subscriber.count({ where: { isActive: true, isVerified: true } }),
+      Subscriber.count({ where: { isActive: false } })
+    ]);
+
+    res.status(200).json({
+      total,
+      active,
+      verified,
+      activeVerified,
+      unsubscribed
+    });
+  } catch (error) {
+    console.error('Get subscriber stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscriber stats' });
   }
 };

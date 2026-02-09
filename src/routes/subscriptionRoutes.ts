@@ -6,7 +6,8 @@ import {
   unsubscribe,
   verify,
   getPreferences,
-  updatePreferences
+  updatePreferences,
+  getSubscriberStats
 } from '../controllers/subscriptionController';
 
 const router = Router();
@@ -51,5 +52,8 @@ router.put(
   ],
   updatePreferences
 );
+
+// Admin: subscriber stats
+router.get('/stats', getSubscriberStats);
 
 export default router;

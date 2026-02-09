@@ -8,17 +8,21 @@ import { Op } from 'sequelize';
 
 export const getLatestArticles = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { limit = 10, offset = 0, source, category } = req.query;
+    const { limit = 10, offset = 0, source, category, region } = req.query;
 
     const whereClause: any = {};
     if (source) whereClause.source = source;
     if (category) whereClause.category = { [Op.contains]: [category] };
+    if (region) whereClause.region = region;
 
     const articles = await Article.findAll({
       where: whereClause,
       limit: Number(limit),
       offset: Number(offset),
-      order: [['pubDate', 'DESC']]
+      order: [
+        ['priority', 'DESC NULLS LAST'],
+        ['pubDate', 'DESC']
+      ]
     });
 
     res.status(200).json({
@@ -97,34 +101,52 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
 
     const maxArticles = Number(process.env.MAX_ARTICLES_PER_NEWSLETTER || 10);
     
-    // Get diverse articles from different sources (max 2 per source)
-    const sources = await Article.findAll({
-      attributes: ['source'],
-      group: ['source'],
-      raw: true
-    }) as Array<{ source: string }>;
+    // Step 1: Get all Hong Kong priority articles first
+    const hongKongArticles = await Article.findAll({
+      where: {
+        priority: { [Op.gte]: 100 }
+      },
+      limit: 3,
+      order: [['priority', 'DESC'], ['pubDate', 'DESC']]
+    });
 
-    let articles: any[] = [];
-    const articlesPerSource = Math.min(2, Math.ceil(maxArticles / sources.length));
-    
-    for (const { source } of sources) {
-      const sourceArticles = await Article.findAll({
-        where: { source },
-        limit: articlesPerSource,
-        order: [['pubDate', 'DESC']]
-      });
-      articles.push(...sourceArticles);
-      if (articles.length >= maxArticles) break;
+    let articles: any[] = [...hongKongArticles];
+    const remainingSlots = maxArticles - articles.length;
+
+    if (remainingSlots > 0) {
+      // Step 2: Get diverse business-focused articles from different sources
+      const sources = await Article.findAll({
+        attributes: ['source'],
+        group: ['source'],
+        raw: true
+      }) as Array<{ source: string }>;
+
+      const articlesPerSource = Math.min(2, Math.ceil(remainingSlots / sources.length));
+      
+      for (const { source } of sources) {
+        if (articles.length >= maxArticles) break;
+        
+        const sourceArticles = await Article.findAll({
+          where: {
+            source,
+            id: { [Op.notIn]: articles.map(a => a.id) },
+            priority: { [Op.gte]: 0 } // Business-focused articles
+          },
+          limit: articlesPerSource,
+          order: [['priority', 'DESC'], ['pubDate', 'DESC']]
+        });
+        articles.push(...sourceArticles);
+      }
     }
     
-    // If we still need more articles, fill with latest
+    // Step 3: Fill remaining slots with latest articles
     if (articles.length < maxArticles) {
       const additionalArticles = await Article.findAll({
         where: {
           id: { [Op.notIn]: articles.map(a => a.id) }
         },
         limit: maxArticles - articles.length,
-        order: [['pubDate', 'DESC']]
+        order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
       });
       articles.push(...additionalArticles);
     }
@@ -204,9 +226,19 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     for (const subscriber of subscribers) {
       try {
         const maxArticles = 12;
-        const articles: Article[] = [];
 
-        // Get diverse articles: max 2 per source
+        // Step 1: Prioritize Hong Kong articles (up to 3)
+        const hongKongArticles: Article[] = await Article.findAll({
+          where: {
+            priority: { [Op.gte]: 100 }
+          },
+          limit: 3,
+          order: [['priority', 'DESC'], ['pubDate', 'DESC']]
+        });
+
+        const articles: Article[] = [...hongKongArticles];
+
+        // Step 2: Get diverse business-focused articles from different sources
         const sources = await Article.findAll({
           attributes: [[Article.sequelize!.fn('DISTINCT', Article.sequelize!.col('source')), 'source']],
           raw: true,
@@ -214,6 +246,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         });
 
         const sourceList = (sources as any[]).map(s => s.source).filter(Boolean);
+        const articlesPerSource = 2;
 
         for (const source of sourceList) {
           if (articles.length >= maxArticles) break;
@@ -221,22 +254,23 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           const sourceArticles: Article[] = await Article.findAll({
             where: {
               source,
-              id: { [Op.notIn]: articles.map(a => a.id) }
+              id: { [Op.notIn]: articles.map(a => a.id) },
+              priority: { [Op.gte]: 0 } // Business-focused
             },
-            limit: 2,
-            order: [['pubDate', 'DESC']]
+            limit: articlesPerSource,
+            order: [['priority', 'DESC'], ['pubDate', 'DESC']]
           });
           articles.push(...sourceArticles);
         }
 
-        // Fill remaining slots with latest articles
+        // Step 3: Fill remaining slots with latest business articles
         if (articles.length < maxArticles) {
           const additionalArticles = await Article.findAll({
             where: {
               id: { [Op.notIn]: articles.map(a => a.id) }
             },
             limit: maxArticles - articles.length,
-            order: [['pubDate', 'DESC']]
+            order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
           });
           articles.push(...additionalArticles);
         }

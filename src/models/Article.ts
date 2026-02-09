@@ -11,6 +11,8 @@ interface ArticleAttributes {
   category: string[];
   imageUrl?: string;
   isFeatured: boolean;
+  priority?: number;
+  region?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -27,6 +29,8 @@ class Article extends Model<ArticleAttributes, ArticleCreationAttributes> implem
   public category!: string[];
   public imageUrl?: string;
   public isFeatured!: boolean;
+  public priority?: number;
+  public region?: string;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -70,6 +74,15 @@ Article.init(
     isFeatured: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    priority: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      allowNull: true
+    },
+    region: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   },
   {
@@ -82,6 +95,12 @@ Article.init(
       },
       {
         fields: ['source']
+      },
+      {
+        fields: ['priority']
+      },
+      {
+        fields: ['region']
       }
     ]
   }

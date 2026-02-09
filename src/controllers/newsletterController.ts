@@ -5,6 +5,33 @@ import Subscriber from '../models/Subscriber';
 import { sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews } from '../services/newsAggregator';
 import { Op } from 'sequelize';
+import crypto from 'crypto';
+
+const ensurePreferencesToken = async (subscriber: Subscriber): Promise<string> => {
+  if (subscriber.preferencesToken) {
+    return subscriber.preferencesToken;
+  }
+
+  subscriber.preferencesToken = crypto.randomBytes(32).toString('hex');
+  await subscriber.save();
+  return subscriber.preferencesToken;
+};
+
+const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> => {
+  const whereClause: Record<string, unknown> = {};
+  const regions = subscriber.regions || [];
+  const topics = subscriber.topics || [];
+
+  if (regions.length > 0 && !regions.includes('global')) {
+    whereClause.region = { [Op.in]: regions };
+  }
+
+  if (topics.length > 0 && !topics.includes('general')) {
+    whereClause.category = { [Op.overlap]: topics };
+  }
+
+  return whereClause;
+};
 
 export const getLatestArticles = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -100,6 +127,7 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
     }
 
     const maxArticles = Number(process.env.MAX_ARTICLES_PER_NEWSLETTER || 10);
+    const preferenceWhere = buildPreferenceWhere(subscriber);
     
     // Step 1: Get all Hong Kong priority articles first
     const hongKongArticles = await Article.findAll({
@@ -117,6 +145,7 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       // Step 2: Get diverse business-focused articles from different sources
       const sources = await Article.findAll({
         attributes: ['source'],
+        where: preferenceWhere,
         group: ['source'],
         raw: true
       }) as Array<{ source: string }>;
@@ -130,7 +159,8 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
           where: {
             source,
             id: { [Op.notIn]: articles.map(a => a.id) },
-            priority: { [Op.gte]: 0 } // Business-focused articles
+            priority: { [Op.gte]: 0 },
+            ...preferenceWhere
           },
           limit: articlesPerSource,
           order: [['priority', 'DESC'], ['pubDate', 'DESC']]
@@ -143,7 +173,8 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
     if (articles.length < maxArticles) {
       const additionalArticles = await Article.findAll({
         where: {
-          id: { [Op.notIn]: articles.map(a => a.id) }
+          id: { [Op.notIn]: articles.map(a => a.id) },
+          ...preferenceWhere
         },
         limit: maxArticles - articles.length,
         order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
@@ -151,7 +182,13 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       articles.push(...additionalArticles);
     }
 
-    const emailSent = await sendNewsletterEmail(subscriber.email, articles, subscriber.unsubscribeToken);
+    const preferencesToken = await ensurePreferencesToken(subscriber);
+    const emailSent = await sendNewsletterEmail(
+      subscriber.email,
+      articles,
+      subscriber.unsubscribeToken,
+      preferencesToken
+    );
     if (!emailSent) {
       res.status(500).json({ error: 'Failed to send test newsletter' });
       return;
@@ -226,6 +263,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     for (const subscriber of subscribers) {
       try {
         const maxArticles = 12;
+        const preferenceWhere = buildPreferenceWhere(subscriber);
 
         // Step 1: Prioritize Hong Kong articles (up to 3)
         const hongKongArticles: Article[] = await Article.findAll({
@@ -241,6 +279,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         // Step 2: Get diverse business-focused articles from different sources
         const sources = await Article.findAll({
           attributes: [[Article.sequelize!.fn('DISTINCT', Article.sequelize!.col('source')), 'source']],
+          where: preferenceWhere,
           raw: true,
           order: [['pubDate', 'DESC']]
         });
@@ -255,7 +294,8 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
             where: {
               source,
               id: { [Op.notIn]: articles.map(a => a.id) },
-              priority: { [Op.gte]: 0 } // Business-focused
+              priority: { [Op.gte]: 0 },
+              ...preferenceWhere
             },
             limit: articlesPerSource,
             order: [['priority', 'DESC'], ['pubDate', 'DESC']]
@@ -267,7 +307,8 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         if (articles.length < maxArticles) {
           const additionalArticles = await Article.findAll({
             where: {
-              id: { [Op.notIn]: articles.map(a => a.id) }
+              id: { [Op.notIn]: articles.map(a => a.id) },
+              ...preferenceWhere
             },
             limit: maxArticles - articles.length,
             order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
@@ -275,7 +316,13 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           articles.push(...additionalArticles);
         }
 
-        const emailSent = await sendNewsletterEmail(subscriber.email, articles, subscriber.unsubscribeToken);
+        const preferencesToken = await ensurePreferencesToken(subscriber);
+        const emailSent = await sendNewsletterEmail(
+          subscriber.email,
+          articles,
+          subscriber.unsubscribeToken,
+          preferencesToken
+        );
         if (emailSent) {
           sent++;
         } else {

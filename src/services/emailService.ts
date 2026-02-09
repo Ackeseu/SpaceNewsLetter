@@ -86,9 +86,11 @@ export const sendVerificationEmail = async (email: string, token: string): Promi
 export const sendNewsletterEmail = async (
   email: string,
   articles: any[],
-  unsubscribeToken: string
+  unsubscribeToken: string,
+  preferencesToken: string
 ): Promise<boolean> => {
   const unsubscribeUrl = `${process.env.APP_URL || 'http://localhost:3000'}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
+  const preferencesUrl = `${process.env.APP_URL || 'http://localhost:3000'}/api/subscriptions/preferences/${preferencesToken}`;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -124,7 +126,7 @@ export const sendNewsletterEmail = async (
         
         <div class="footer">
           <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
-          <p><a href="${unsubscribeUrl}">Unsubscribe</a></p>
+          <p><a href="${preferencesUrl}">Manage preferences</a> | <a href="${unsubscribeUrl}">Unsubscribe</a></p>
         </div>
       </div>
     </body>

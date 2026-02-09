@@ -5,6 +5,7 @@ import {
   resendVerification,
   unsubscribe,
   verify,
+  getPreferences,
   updatePreferences
 } from '../controllers/subscriptionController';
 
@@ -16,7 +17,8 @@ router.post(
   [
     body('email').isEmail().normalizeEmail(),
     body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
-    body('topics').optional().isArray()
+    body('topics').optional().isArray(),
+    body('regions').optional().isArray()
   ],
   subscribe
 );
@@ -36,12 +38,16 @@ router.get('/unsubscribe/:token', unsubscribe);
 // Verify email
 router.get('/verify/:token', verify);
 
-// Update preferences
+// Get preferences by token
+router.get('/preferences/:token', getPreferences);
+
+// Update preferences by token
 router.put(
-  '/preferences/:id',
+  '/preferences/:token',
   [
     body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
-    body('topics').optional().isArray()
+    body('topics').optional().isArray(),
+    body('regions').optional().isArray()
   ],
   updatePreferences
 );

@@ -9,14 +9,16 @@ interface SubscriberAttributes {
   isActive: boolean;
   frequency: 'daily' | 'weekly' | 'monthly';
   topics: string[];
+  regions: string[];
   verificationToken?: string;
   isVerified: boolean;
   unsubscribeToken: string;
+  preferencesToken?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface SubscriberCreationAttributes extends Optional<SubscriberAttributes, 'id' | 'isActive' | 'isVerified' | 'topics' | 'frequency'> {}
+interface SubscriberCreationAttributes extends Optional<SubscriberAttributes, 'id' | 'isActive' | 'isVerified' | 'topics' | 'frequency' | 'regions' | 'preferencesToken'> {}
 
 class Subscriber extends Model<SubscriberAttributes, SubscriberCreationAttributes> implements SubscriberAttributes {
   public id!: number;
@@ -26,9 +28,11 @@ class Subscriber extends Model<SubscriberAttributes, SubscriberCreationAttribute
   public isActive!: boolean;
   public frequency!: 'daily' | 'weekly' | 'monthly';
   public topics!: string[];
+  public regions!: string[];
   public verificationToken?: string;
   public isVerified!: boolean;
   public unsubscribeToken!: string;
+  public preferencesToken?: string;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -68,6 +72,10 @@ Subscriber.init(
       type: DataTypes.ARRAY(DataTypes.STRING),
       defaultValue: ['general']
     },
+    regions: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      defaultValue: ['global']
+    },
     verificationToken: {
       type: DataTypes.STRING,
       allowNull: true
@@ -79,6 +87,11 @@ Subscriber.init(
     unsubscribeToken: {
       type: DataTypes.STRING,
       allowNull: false,
+      unique: true
+    },
+    preferencesToken: {
+      type: DataTypes.STRING,
+      allowNull: true,
       unique: true
     }
   },

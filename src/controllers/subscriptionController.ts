@@ -12,7 +12,7 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { email, firstName, lastName, frequency, topics } = req.body;
+    const { email, firstName, lastName, frequency, topics, regions } = req.body;
 
     // Check if subscriber already exists
     const existingSubscriber = await Subscriber.findOne({ where: { email } });
@@ -25,6 +25,7 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
       existingSubscriber.isActive = true;
       existingSubscriber.frequency = frequency || existingSubscriber.frequency;
       existingSubscriber.topics = topics || existingSubscriber.topics;
+      existingSubscriber.regions = regions || existingSubscriber.regions;
       await existingSubscriber.save();
       res.status(200).json({ message: 'Subscription reactivated', subscriber: existingSubscriber });
       return;
@@ -33,6 +34,7 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
     // Create new subscriber
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const unsubscribeToken = crypto.randomBytes(32).toString('hex');
+    const preferencesToken = crypto.randomBytes(32).toString('hex');
 
     const subscriber = await Subscriber.create({
       email,
@@ -40,8 +42,10 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
       lastName,
       frequency: frequency || 'weekly',
       topics: topics || ['general'],
+      regions: regions || ['global'],
       verificationToken,
       unsubscribeToken,
+      preferencesToken,
       isVerified: false,
       isActive: true
     });
@@ -143,12 +147,35 @@ export const verify = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const getPreferences = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = req.params;
+    const subscriber = await Subscriber.findOne({ where: { preferencesToken: token } });
+    if (!subscriber) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    res.status(200).json({
+      email: subscriber.email,
+      frequency: subscriber.frequency,
+      topics: subscriber.topics,
+      regions: subscriber.regions,
+      isActive: subscriber.isActive,
+      isVerified: subscriber.isVerified
+    });
+  } catch (error) {
+    console.error('Get preferences error:', error);
+    res.status(500).json({ error: 'Failed to fetch preferences' });
+  }
+};
+
 export const updatePreferences = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const { frequency, topics } = req.body;
+    const { token } = req.params;
+    const { frequency, topics, regions } = req.body;
 
-    const subscriber = await Subscriber.findByPk(id);
+    const subscriber = await Subscriber.findOne({ where: { preferencesToken: token } });
     if (!subscriber) {
       res.status(404).json({ error: 'Subscriber not found' });
       return;
@@ -156,6 +183,7 @@ export const updatePreferences = async (req: Request, res: Response): Promise<vo
 
     if (frequency) subscriber.frequency = frequency;
     if (topics) subscriber.topics = topics;
+    if (regions) subscriber.regions = regions;
     await subscriber.save();
 
     res.status(200).json({ message: 'Preferences updated', subscriber });

@@ -60,9 +60,10 @@ const startServer = async () => {
       await Promise.race([dbConnectionPromise, timeoutPromise]);
       console.log('✓ Database connection established successfully');
 
-      // Sync database models (use { force: false } in production)
-      await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
-      console.log('✓ Database models synchronized');
+      // Sync database models with alter enabled to add new columns
+      // Note: alter: true adds missing columns but doesn't drop existing ones
+      await sequelize.sync({ alter: true });
+      console.log('✓ Database models synchronized with schema updates');
     } catch (dbError) {
       if (dbError instanceof Error && dbError.message === 'Database connection timeout') {
         console.warn('⚠️  Database connection timeout - starting server without database');

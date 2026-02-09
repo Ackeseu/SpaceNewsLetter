@@ -60,10 +60,11 @@ const startServer = async () => {
       await Promise.race([dbConnectionPromise, timeoutPromise]);
       console.log('✓ Database connection established successfully');
 
-      // Sync database models with alter enabled to add new columns
-      // Note: alter: true adds missing columns but doesn't drop existing ones
-      await sequelize.sync({ alter: true });
-      console.log('✓ Database models synchronized with schema updates');
+      // Sync database models - use alter: true only on first run to add missing columns
+      // Set ALTER_DB=true environment variable if you need to alter existing schema
+      const shouldAlter = process.env.ALTER_DB === 'true' || process.env.NODE_ENV === 'development';
+      await sequelize.sync({ alter: shouldAlter });
+      console.log(`✓ Database models synchronized${shouldAlter ? ' (with schema modifications)' : ''}`);
     } catch (dbError) {
       if (dbError instanceof Error && dbError.message === 'Database connection timeout') {
         console.warn('⚠️  Database connection timeout - starting server without database');

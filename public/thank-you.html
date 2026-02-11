@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thank You - NewSpace Newsletter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 600px;
+      width: 100%;
+      padding: 50px;
+      text-align: center;
+    }
+
+    .checkmark-circle {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 30px;
+      font-size: 50px;
+      animation: scaleIn 0.5s ease-out;
+    }
+
+    @keyframes scaleIn {
+      from {
+        transform: scale(0);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    h1 {
+      color: #333;
+      font-size: 36px;
+      margin-bottom: 15px;
+      animation: fadeIn 0.6s ease-out 0.2s both;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 18px;
+      line-height: 1.6;
+      margin-bottom: 30px;
+      animation: fadeIn 0.6s ease-out 0.4s both;
+    }
+
+    .info-box {
+      background: #f8f9ff;
+      border-left: 4px solid #667eea;
+      padding: 20px;
+      border-radius: 6px;
+      margin: 30px 0;
+      text-align: left;
+      animation: fadeIn 0.6s ease-out 0.6s both;
+    }
+
+    .info-box h3 {
+      color: #333;
+      font-size: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+    }
+
+    .info-box h3::before {
+      content: "✓";
+      color: #667eea;
+      font-weight: bold;
+      margin-right: 10px;
+      font-size: 18px;
+    }
+
+    .info-box p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .info-box p:last-child {
+      margin-bottom: 0;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 40px;
+      animation: fadeIn 0.6s ease-out 0.8s both;
+    }
+
+    .button {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .button-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .button-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .button-secondary {
+      background: #f0f0f0;
+      color: #333;
+      border: 2px solid #e0e0e0;
+    }
+
+    .button-secondary:hover {
+      background: #e8e8e8;
+    }
+
+    .footer {
+      margin-top: 40px;
+      padding-top: 30px;
+      border-top: 1px solid #e0e0e0;
+      color: #999;
+      font-size: 12px;
+    }
+
+    .footer a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 40px 20px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .subtitle {
+        font-size: 16px;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="checkmark-circle">✓</div>
+    <h1>Thank You for Subscribing!</h1>
+    <p class="subtitle">We're excited to have you join the NewSpace Newsletter community.</p>
+
+    <div class="info-box">
+      <h3>What Happens Next</h3>
+      <p><strong>Check your email</strong> in the next few minutes for a verification link. Click it to confirm your subscription.</p>
+      <p>Once verified, you'll start receiving curated news about space exploration, launches, missions, and the space economy.</p>
+      <p><strong>Didn't receive it?</strong> Check your spam or junk folder, and add us to your contacts to ensure our emails reach your inbox.</p>
+    </div>
+
+    <div class="info-box">
+      <h3>Manage Your Preferences</h3>
+      <p>Once you verify your email, you'll be able to manage your newsletter frequency, topics of interest, and regions in every newsletter we send.</p>
+    </div>
+
+    <div class="button-group">
+      <a href="/" class="button button-secondary">Back to Home</a>
+      <a href="https://newspace-newsletter-api.azurewebsites.net/health" class="button button-primary">API Status</a>
+    </div>
+
+    <div class="footer">
+      <p>We respect your privacy. You can unsubscribe anytime from any email.<br>
+      <a href="#">Privacy Policy</a> | <a href="#">Contact Us</a></p>
+    </div>
+  </div>
+</body>
+</html>

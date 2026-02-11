@@ -368,11 +368,10 @@
         const data = await response.json();
 
         if (response.ok) {
-          messageDiv.className = 'message success';
-          messageDiv.textContent = '✓ ' + data.message + ' Check your email to verify.';
-          form.reset();
-          document.getElementById('weekly').checked = true;
-          document.getElementById('topic1').checked = true;
+          // Redirect to thank you page after 1 second
+          setTimeout(() => {
+            window.location.href = '/thank-you.html';
+          }, 1000);
         } else {
           messageDiv.className = 'message error';
           messageDiv.textContent = '✗ ' + (data.error || 'Subscription failed. Please try again.');

@@ -229,3 +229,21 @@ export const getSubscriberStats = async (req: Request, res: Response): Promise<v
     res.status(500).json({ error: 'Failed to fetch subscriber stats' });
   }
 };
+
+export const listAllSubscribers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const subscribers = await Subscriber.findAll({
+      attributes: ['id', 'email', 'firstName', 'lastName', 'isVerified', 'isActive'],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json(subscribers);
+  } catch (error) {
+    console.error('List subscribers error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscribers' });
+  }
+};

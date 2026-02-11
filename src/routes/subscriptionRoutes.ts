@@ -13,6 +13,12 @@ import {
 
 const router = Router();
 
+// Admin: subscriber stats (place before dynamic routes)
+router.get('/stats', getSubscriberStats);
+
+// Admin: list all subscribers (place before dynamic routes)
+router.get('/admin/list', listAllSubscribers);
+
 // Subscribe to newsletter
 router.post(
   '/subscribe',
@@ -53,11 +59,5 @@ router.put(
   ],
   updatePreferences
 );
-
-// Admin: subscriber stats
-router.get('/stats', getSubscriberStats);
-
-// Admin: list all subscribers
-router.get('/admin/list', listAllSubscribers);
 
 export default router;

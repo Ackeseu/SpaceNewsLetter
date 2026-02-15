@@ -113,8 +113,8 @@ async function loadSubscribers() {
               <td>${sub.frequency || 'weekly'}</td>
               <td>${(sub.topics || []).join(', ') || '-'}</td>
               <td>
-                <button class="action-btn edit-btn" onclick="editSubscriber('${sub.id}')">Edit</button>
-                <button class="action-btn delete-btn" onclick="deleteSubscriber('${sub.email}')">Remove</button>
+                <button class="action-btn edit-btn" data-action="edit" data-id="${sub.id}">Edit</button>
+                <button class="action-btn delete-btn" data-action="remove" data-email="${sub.email}">Remove</button>
               </td>
             </tr>
           `).join('')}
@@ -188,11 +188,13 @@ function showPrefForm(email) {
   }
 }
 
-function switchTab(tabName) {
+function switchTab(tabName, triggerEl) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById(tabName).classList.add('active');
-  event.target.classList.add('active');
+  if (triggerEl) {
+    triggerEl.classList.add('active');
+  }
 }
 
 function showMessage(elementId, text, type) {
@@ -281,6 +283,52 @@ if (prefForm) {
       }
     } catch (error) {
       showMessage('dashMessage', 'Error updating preferences', 'error');
+    }
+  });
+}
+
+// Bind UI events
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', logout);
+}
+
+const closeModalBtn = document.getElementById('closeModalBtn');
+if (closeModalBtn) {
+  closeModalBtn.addEventListener('click', closeModal);
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabName = btn.getAttribute('data-tab');
+    if (tabName) {
+      switchTab(tabName, btn);
+    }
+  });
+});
+
+const subscribersTable = document.getElementById('subscribersTable');
+if (subscribersTable) {
+  subscribersTable.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const action = target.getAttribute('data-action');
+    if (!action) {
+      return;
+    }
+    if (action === 'edit') {
+      const id = target.getAttribute('data-id');
+      if (id) {
+        editSubscriber(id);
+      }
+    }
+    if (action === 'remove') {
+      const email = target.getAttribute('data-email');
+      if (email) {
+        deleteSubscriber(email);
+      }
     }
   });
 }

@@ -457,7 +457,7 @@
   <div class="dashboard" id="dashboard">
     <div class="header">
       <h1>📊 Admin Dashboard</h1>
-      <button class="logout-btn" onclick="logout()">Logout</button>
+      <button class="logout-btn" id="logoutBtn">Logout</button>
     </div>
 
     <div class="content">
@@ -468,9 +468,9 @@
 
       <!-- Tabs -->
       <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('subscribers')">Subscribers</button>
-        <button class="tab-btn" onclick="switchTab('add')">Add Subscriber</button>
-        <button class="tab-btn" onclick="switchTab('preferences')">Edit Preferences</button>
+        <button class="tab-btn active" data-tab="subscribers">Subscribers</button>
+        <button class="tab-btn" data-tab="add">Add Subscriber</button>
+        <button class="tab-btn" data-tab="preferences">Edit Preferences</button>
       </div>
 
       <!-- Subscribers Tab -->
@@ -634,7 +634,7 @@
   <!-- Edit Modal -->
   <div class="modal" id="editModal">
     <div class="modal-content" style="position: relative;">
-      <button class="modal-close" onclick="closeModal()">&times;</button>
+      <button class="modal-close" id="closeModalBtn">&times;</button>
       <div class="modal-header">Edit Subscriber</div>
       <form id="editForm">
         <div class="form-group">

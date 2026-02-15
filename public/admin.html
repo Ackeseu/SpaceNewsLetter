@@ -659,8 +659,9 @@
   </div>
 
   <script>
-    const API_URL = window.location.origin === 'file://' 
-      ? 'https://newspace-newsletter-api.azurewebsites.net' 
+    const isFileOrigin = window.location.protocol === 'file:' || window.location.origin === 'null';
+    const API_URL = isFileOrigin
+      ? 'https://newspace-newsletter-api.azurewebsites.net'
       : window.location.origin;
 
     let adminToken = localStorage.getItem('adminToken');
@@ -684,9 +685,13 @@
           document.getElementById('dashboard').style.display = 'block';
           loadDashboard();
         } else {
-          showMessage('loginMessage', 'Invalid token', 'error');
+          localStorage.removeItem('adminToken');
+          adminToken = null;
+          showMessage('loginMessage', `Invalid token (status ${response.status})`, 'error');
         }
       } catch (error) {
+        localStorage.removeItem('adminToken');
+        adminToken = null;
         showMessage('loginMessage', 'Connection error', 'error');
       }
     });

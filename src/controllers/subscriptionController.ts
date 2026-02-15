@@ -142,7 +142,7 @@ export const verify = async (req: Request, res: Response): Promise<void> => {
 
     const subscriber = await Subscriber.findOne({ where: { verificationToken: token } });
     if (!subscriber) {
-      res.status(404).json({ error: 'Invalid verification token' });
+      res.status(404).redirect('/verified.html?error=invalid');
       return;
     }
 
@@ -150,10 +150,10 @@ export const verify = async (req: Request, res: Response): Promise<void> => {
     subscriber.verificationToken = undefined;
     await subscriber.save();
 
-    res.status(200).json({ message: 'Email verified successfully' });
+    res.redirect('/verified.html');
   } catch (error) {
     console.error('Verify error:', error);
-    res.status(500).json({ error: 'Failed to verify email' });
+    res.status(500).redirect('/verified.html?error=failed');
   }
 };
 
@@ -245,5 +245,58 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
   } catch (error) {
     console.error('List subscribers error:', error);
     res.status(500).json({ error: 'Failed to fetch subscribers' });
+  }
+};
+
+export const resendVerificationToUnverified = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const { emailDomain } = req.query;
+    const { Op } = require('sequelize');
+
+    // Get all unverified subscribers
+    let where: Record<string, any> = { isVerified: false };
+    if (emailDomain) {
+      // Filter by email domain if provided
+      where.email = { [Op.like]: `%@${emailDomain}` };
+    }
+
+    const unverified = await Subscriber.findAll({ where });
+
+    if (unverified.length === 0) {
+      res.status(200).json({ message: 'No unverified subscribers found', count: 0 });
+      return;
+    }
+
+    const { sendVerificationEmail } = require('../services/emailService');
+    let successCount = 0;
+    const failedEmails: string[] = [];
+
+    for (const subscriber of unverified) {
+      if (!subscriber.verificationToken) {
+        subscriber.verificationToken = crypto.randomBytes(32).toString('hex');
+        await subscriber.save();
+      }
+
+      const emailSent = await sendVerificationEmail(subscriber.email, subscriber.verificationToken);
+      if (emailSent) {
+        successCount++;
+      } else {
+        failedEmails.push(subscriber.email);
+      }
+    }
+
+    res.status(200).json({
+      message: 'Verification emails resent',
+      totalUnverified: unverified.length,
+      successCount,
+      failedEmails
+    });
+  } catch (error) {
+    console.error('Resend verification to unverified error:', error);
+    res.status(500).json({ error: 'Failed to resend verification emails' });
   }
 };

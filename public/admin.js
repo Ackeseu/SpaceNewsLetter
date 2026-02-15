@@ -1,0 +1,293 @@
+const isFileOrigin = window.location.protocol === 'file:' || window.location.origin === 'null';
+const API_URL = isFileOrigin
+  ? 'https://newspace-newsletter-api.azurewebsites.net'
+  : window.location.origin;
+
+let adminToken = localStorage.getItem('adminToken');
+let allSubscribers = [];
+
+// Login
+const loginForm = document.getElementById('loginForm');
+if (loginForm) {
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = document.getElementById('adminToken').value;
+    adminToken = token;
+    localStorage.setItem('adminToken', token);
+
+    // Try to fetch stats to verify token
+    try {
+      const response = await fetch(`${API_URL}/api/subscriptions/stats`, {
+        headers: { 'x-admin-token': token }
+      });
+
+      if (response.ok) {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        loadDashboard();
+      } else {
+        localStorage.removeItem('adminToken');
+        adminToken = null;
+        showMessage('loginMessage', `Invalid token (status ${response.status})`, 'error');
+      }
+    } catch (error) {
+      localStorage.removeItem('adminToken');
+      adminToken = null;
+      showMessage('loginMessage', 'Connection error', 'error');
+    }
+  });
+}
+
+async function loadDashboard() {
+  await loadStats();
+  await loadSubscribers();
+  await loadPrefEmails();
+}
+
+async function loadStats() {
+  try {
+    const response = await fetch(`${API_URL}/api/subscriptions/stats`, {
+      headers: { 'x-admin-token': adminToken }
+    });
+    const data = await response.json();
+
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card">
+        <h3>Total Subscribers</h3>
+        <div class="number">${data.total || 0}</div>
+      </div>
+      <div class="stat-card">
+        <h3>Active</h3>
+        <div class="number">${data.active || 0}</div>
+      </div>
+      <div class="stat-card">
+        <h3>Verified</h3>
+        <div class="number">${data.verified || 0}</div>
+      </div>
+      <div class="stat-card">
+        <h3>Unsubscribed</h3>
+        <div class="number">${data.unsubscribed || 0}</div>
+      </div>
+    `;
+  } catch (error) {
+    console.error('Error loading stats:', error);
+  }
+}
+
+async function loadSubscribers() {
+  try {
+    const response = await fetch(`${API_URL}/api/subscriptions/admin/list`, {
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (!response.ok) {
+      document.getElementById('subscribersTable').innerHTML = '<p style="padding: 20px;">Error loading subscribers</p>';
+      return;
+    }
+
+    allSubscribers = await response.json();
+
+    const table = `
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Frequency</th>
+            <th>Topics</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allSubscribers.map(sub => `
+            <tr>
+              <td>${sub.email}</td>
+              <td>${(sub.firstName || '') + ' ' + (sub.lastName || '')}</td>
+              <td>
+                ${sub.isVerified
+                  ? '<span class="status-badge status-verified">Verified</span>'
+                  : '<span class="status-badge status-pending">Pending</span>'}
+                ${!sub.isActive ? '<br><span class="status-badge status-inactive">Inactive</span>' : ''}
+              </td>
+              <td>${sub.frequency || 'weekly'}</td>
+              <td>${(sub.topics || []).join(', ') || '-'}</td>
+              <td>
+                <button class="action-btn edit-btn" onclick="editSubscriber('${sub.id}')">Edit</button>
+                <button class="action-btn delete-btn" onclick="deleteSubscriber('${sub.email}')">Remove</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    document.getElementById('subscribersTable').innerHTML = table;
+  } catch (error) {
+    console.error('Error:', error);
+    document.getElementById('subscribersTable').innerHTML = '<p style="padding: 20px;">Error loading subscribers</p>';
+  }
+}
+
+async function loadPrefEmails() {
+  const select = document.getElementById('prefEmail');
+  select.innerHTML = allSubscribers.length > 0
+    ? allSubscribers.map(s => `<option value="${s.email}">${s.email}</option>`).join('')
+    : '<option>No subscribers</option>';
+
+  if (allSubscribers.length > 0) {
+    select.addEventListener('change', (e) => {
+      if (e.target.value) {
+        showPrefForm(e.target.value);
+      }
+    });
+  }
+}
+
+function editSubscriber(id) {
+  const sub = allSubscribers.find(s => s.id == id);
+  if (sub) {
+    document.getElementById('editEmail').value = sub.email;
+    document.getElementById('editFirstName').value = sub.firstName || '';
+    document.getElementById('editFrequency').value = sub.frequency || 'weekly';
+    document.getElementById('editModal').classList.add('show');
+  }
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('show');
+}
+
+async function deleteSubscriber(email) {
+  if (confirm(`Remove ${email} from subscribers?`)) {
+    const sub = allSubscribers.find(s => s.email === email);
+    if (sub && sub.unsubscribeToken) {
+      try {
+        await fetch(`${API_URL}/api/subscriptions/unsubscribe/${sub.unsubscribeToken}`);
+        showMessage('dashMessage', 'Subscriber removed', 'success');
+        loadSubscribers();
+      } catch (error) {
+        showMessage('dashMessage', 'Error removing subscriber', 'error');
+      }
+    }
+  }
+}
+
+function showPrefForm(email) {
+  const sub = allSubscribers.find(s => s.email === email);
+  if (sub) {
+    document.getElementById('prefForm').style.display = 'block';
+    document.getElementById('prefFrequency').value = sub.frequency || 'weekly';
+
+    document.querySelectorAll('.prefTopic').forEach(cb => {
+      cb.checked = (sub.topics || []).includes(cb.value);
+    });
+
+    document.querySelectorAll('.prefRegion').forEach(cb => {
+      cb.checked = (sub.regions || []).includes(cb.value);
+    });
+  }
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(tabName).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function showMessage(elementId, text, type) {
+  const msg = document.getElementById(elementId);
+  msg.textContent = text;
+  msg.className = `message show ${type}`;
+  setTimeout(() => msg.classList.remove('show'), 5000);
+}
+
+function logout() {
+  localStorage.removeItem('adminToken');
+  location.reload();
+}
+
+// Add Subscriber Form
+const addForm = document.getElementById('addForm');
+if (addForm) {
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const topics = Array.from(document.querySelectorAll('input[id^="newTopic"]:checked')).map(cb => cb.value);
+    const regions = Array.from(document.querySelectorAll('input[id^="newRegion"]:checked')).map(cb => cb.value);
+
+    try {
+      const response = await fetch(`${API_URL}/api/subscriptions/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('newEmail').value,
+          firstName: document.getElementById('newFirstName').value,
+          lastName: document.getElementById('newLastName').value,
+          frequency: document.getElementById('newFrequency').value,
+          topics: topics.length > 0 ? topics : ['general'],
+          regions: regions.length > 0 ? regions : ['global']
+        })
+      });
+
+      if (response.ok) {
+        showMessage('dashMessage', 'Subscriber added successfully', 'success');
+        document.getElementById('addForm').reset();
+        loadSubscribers();
+        loadPrefEmails();
+      } else {
+        const error = await response.json();
+        showMessage('dashMessage', error.error || 'Failed to add subscriber', 'error');
+      }
+    } catch (error) {
+      showMessage('dashMessage', 'Error adding subscriber', 'error');
+    }
+  });
+}
+
+// Preferences Form
+const prefForm = document.getElementById('prefForm');
+if (prefForm) {
+  prefForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = document.getElementById('prefEmail').value;
+    const sub = allSubscribers.find(s => s.email === email);
+
+    if (!sub || !sub.preferencesToken) {
+      showMessage('dashMessage', 'Cannot update preferences - token missing', 'error');
+      return;
+    }
+
+    const topics = Array.from(document.querySelectorAll('.prefTopic:checked')).map(cb => cb.value);
+    const regions = Array.from(document.querySelectorAll('.prefRegion:checked')).map(cb => cb.value);
+
+    try {
+      const response = await fetch(`${API_URL}/api/subscriptions/preferences/${sub.preferencesToken}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frequency: document.getElementById('prefFrequency').value,
+          topics: topics.length > 0 ? topics : ['general'],
+          regions: regions.length > 0 ? regions : ['global']
+        })
+      });
+
+      if (response.ok) {
+        showMessage('dashMessage', 'Preferences updated', 'success');
+        loadSubscribers();
+      } else {
+        showMessage('dashMessage', 'Failed to update preferences', 'error');
+      }
+    } catch (error) {
+      showMessage('dashMessage', 'Error updating preferences', 'error');
+    }
+  });
+}
+
+// Check if already logged in
+if (adminToken) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadDashboard();
+}

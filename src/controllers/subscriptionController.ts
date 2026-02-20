@@ -237,7 +237,8 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
     }
 
     const subscribers = await Subscriber.findAll({
-      attributes: ['id', 'email', 'firstName', 'lastName', 'isVerified', 'isActive'],
+      attributes: ['id', 'email', 'firstName', 'lastName', 'isVerified', 'isActive', 'frequency', 'topics', 'regions', 'preferencesToken', 'unsubscribeToken'],
+      where: { isActive: true },
       order: [['createdAt', 'DESC']]
     });
 

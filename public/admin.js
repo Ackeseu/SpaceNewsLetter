@@ -214,9 +214,13 @@ async function deleteSubscriber(email) {
     const sub = allSubscribers.find(s => s.email === email);
     if (sub && sub.unsubscribeToken) {
       try {
-        await fetch(`${API_URL}/api/subscriptions/unsubscribe/${sub.unsubscribeToken}`);
+        const response = await fetch(`${API_URL}/api/subscriptions/unsubscribe/${sub.unsubscribeToken}`);
+        if (!response.ok) {
+          showMessage('dashMessage', 'Failed to remove subscriber', 'error');
+          return;
+        }
         showMessage('dashMessage', 'Subscriber removed', 'success');
-        loadSubscribers();
+        await loadSubscribers();
       } catch (error) {
         showMessage('dashMessage', 'Error removing subscriber', 'error');
       }

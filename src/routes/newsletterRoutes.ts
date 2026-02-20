@@ -6,7 +6,10 @@ import {
   getArticleById,
   sendTestNewsletter,
   aggregateNewsletterArticles,
-  sendScheduledNewsletters
+  sendScheduledNewsletters,
+  listNewsSources,
+  createNewsSource,
+  deleteNewsSource
 } from '../controllers/newsletterController';
 
 const router = Router();
@@ -19,6 +22,21 @@ router.get('/articles/featured', getFeaturedArticles);
 
 // Get article by ID
 router.get('/articles/:id', getArticleById);
+
+// Admin: news source management
+router.get('/sources', listNewsSources);
+router.post(
+  '/sources',
+  [
+    body('url').isURL(),
+    body('source').isString().trim().notEmpty(),
+    body('category').optional().isArray(),
+    body('region').optional().isString(),
+    body('isActive').optional().isBoolean()
+  ],
+  createNewsSource
+);
+router.delete('/sources/:id', deleteNewsSource);
 
 // Send test newsletter
 router.post(

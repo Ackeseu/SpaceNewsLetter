@@ -3,9 +3,10 @@ import { validationResult } from 'express-validator';
 import Article from '../models/Article';
 import Subscriber from '../models/Subscriber';
 import { sendNewsletterEmail } from '../services/emailService';
-import { aggregateNews } from '../services/newsAggregator';
+import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
+import NewsSource from '../models/NewsSource';
 
 const ensurePreferencesToken = async (subscriber: Subscriber): Promise<string> => {
   if (subscriber.preferencesToken) {
@@ -31,6 +32,18 @@ const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> =
   }
 
   return whereClause;
+};
+
+const requireAdminToken = (req: Request, res: Response): boolean => {
+  const adminToken = process.env.ADMIN_TEST_TOKEN;
+  const providedToken = req.header('x-admin-token') || req.query.token;
+
+  if (adminToken && providedToken !== adminToken) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+
+  return true;
 };
 
 export const getLatestArticles = async (req: Request, res: Response): Promise<void> => {
@@ -340,5 +353,87 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Send scheduled newsletters error:', error);
     res.status(500).json({ error: 'Failed to send newsletters' });
+  }
+};
+
+export const listNewsSources = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    await seedDefaultSourcesIfEmpty();
+
+    const sources = await NewsSource.findAll({
+      order: [['createdAt', 'ASC']]
+    });
+
+    res.status(200).json({ sources });
+  } catch (error) {
+    console.error('List news sources error:', error);
+    res.status(500).json({ error: 'Failed to fetch news sources' });
+  }
+};
+
+export const createNewsSource = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array() });
+      return;
+    }
+
+    const { url, source, category, region, isActive = true } = req.body as {
+      url: string;
+      source: string;
+      category?: string[];
+      region?: string;
+      isActive?: boolean;
+    };
+
+    const existing = await NewsSource.findOne({ where: { url } });
+    if (existing) {
+      res.status(409).json({ error: 'Source URL already exists' });
+      return;
+    }
+
+    const created = await NewsSource.create({
+      url,
+      source,
+      category: category && category.length > 0 ? category : ['space', 'news'],
+      region,
+      isActive
+    });
+
+    res.status(201).json({ source: created });
+  } catch (error) {
+    console.error('Create news source error:', error);
+    res.status(500).json({ error: 'Failed to create news source' });
+  }
+};
+
+export const deleteNewsSource = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const source = await NewsSource.findByPk(id);
+
+    if (!source) {
+      res.status(404).json({ error: 'Source not found' });
+      return;
+    }
+
+    await source.destroy();
+    res.status(200).json({ message: 'Source deleted' });
+  } catch (error) {
+    console.error('Delete news source error:', error);
+    res.status(500).json({ error: 'Failed to delete news source' });
   }
 };

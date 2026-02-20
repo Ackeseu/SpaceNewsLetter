@@ -1,5 +1,6 @@
 import Parser from 'rss-parser';
 import Article from '../models/Article';
+import NewsSource from '../models/NewsSource';
 
 interface RSSFeed {
   url: string;
@@ -8,7 +9,7 @@ interface RSSFeed {
   region?: string;
 }
 
-const RSS_FEEDS: RSSFeed[] = [
+export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
   // International Space Business News
   {
     url: 'https://spacenews.com/feed/',
@@ -68,6 +69,44 @@ const RSS_FEEDS: RSSFeed[] = [
   }
 ];
 
+export const seedDefaultSourcesIfEmpty = async (): Promise<void> => {
+  const sourceCount = await NewsSource.count();
+  if (sourceCount > 0) {
+    return;
+  }
+
+  await NewsSource.bulkCreate(
+    DEFAULT_RSS_FEEDS.map((feed) => ({
+      url: feed.url,
+      source: feed.source,
+      category: feed.category,
+      region: feed.region,
+      isActive: true
+    })),
+    { ignoreDuplicates: true }
+  );
+};
+
+const getConfiguredFeeds = async (): Promise<RSSFeed[]> => {
+  await seedDefaultSourcesIfEmpty();
+
+  const configuredFeeds = await NewsSource.findAll({
+    where: { isActive: true },
+    order: [['createdAt', 'ASC']]
+  });
+
+  if (configuredFeeds.length > 0) {
+    return configuredFeeds.map((feed) => ({
+      url: feed.url,
+      source: feed.source,
+      category: feed.category,
+      region: feed.region || undefined
+    }));
+  }
+
+  return DEFAULT_RSS_FEEDS;
+};
+
 const parser = new Parser({
   customFields: {
     item: [
@@ -122,8 +161,9 @@ function calculateArticlePriority(title: string, description: string): number {
 export const aggregateNews = async (): Promise<number> => {
   let articlesAdded = 0;
   const MAX_ARTICLES_PER_SOURCE = 5;
+  const feeds = await getConfiguredFeeds();
 
-  for (const feedConfig of RSS_FEEDS) {
+  for (const feedConfig of feeds) {
     try {
       console.log(`Fetching articles from ${feedConfig.source}...`);
       const feed = await parser.parseURL(feedConfig.url);

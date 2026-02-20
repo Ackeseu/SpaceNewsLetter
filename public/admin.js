@@ -5,6 +5,7 @@ const API_URL = isFileOrigin
 
 let adminToken = localStorage.getItem('adminToken');
 let allSubscribers = [];
+let allSources = [];
 
 // Login
 const loginForm = document.getElementById('loginForm');
@@ -42,6 +43,7 @@ async function loadDashboard() {
   await loadStats();
   await loadSubscribers();
   await loadPrefEmails();
+  await loadSources();
 }
 
 async function loadStats() {
@@ -128,6 +130,56 @@ async function loadSubscribers() {
   }
 }
 
+async function loadSources() {
+  const tableEl = document.getElementById('sourcesTable');
+  if (!tableEl) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/newsletters/sources`, {
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (!response.ok) {
+      tableEl.innerHTML = '<p style="padding: 20px;">Error loading sources</p>';
+      return;
+    }
+
+    const data = await response.json();
+    allSources = data.sources || [];
+
+    tableEl.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>URL</th>
+            <th>Categories</th>
+            <th>Region</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allSources.map(source => `
+            <tr>
+              <td>${source.source}</td>
+              <td><a href="${source.url}" target="_blank" rel="noopener noreferrer">${source.url}</a></td>
+              <td>${(source.category || []).join(', ') || '-'}</td>
+              <td>${source.region || 'global'}</td>
+              <td>
+                <button class="action-btn delete-btn" data-action="remove-source" data-source-id="${source.id}">Remove</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error) {
+    tableEl.innerHTML = '<p style="padding: 20px;">Error loading sources</p>';
+  }
+}
+
 async function loadPrefEmails() {
   const select = document.getElementById('prefEmail');
   select.innerHTML = allSubscribers.length > 0
@@ -202,6 +254,30 @@ function showMessage(elementId, text, type) {
   msg.textContent = text;
   msg.className = `message show ${type}`;
   setTimeout(() => msg.classList.remove('show'), 5000);
+}
+
+async function deleteSource(id) {
+  if (!confirm('Remove this source?')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/newsletters/sources/${id}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (response.ok) {
+      showMessage('dashMessage', 'Source removed', 'success');
+      await loadSources();
+      return;
+    }
+
+    const error = await response.json();
+    showMessage('dashMessage', error.error || 'Failed to remove source', 'error');
+  } catch (error) {
+    showMessage('dashMessage', 'Error removing source', 'error');
+  }
 }
 
 function logout() {
@@ -287,6 +363,47 @@ if (prefForm) {
   });
 }
 
+const sourceForm = document.getElementById('sourceForm');
+if (sourceForm) {
+  sourceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const categoriesRaw = document.getElementById('sourceCategories').value || '';
+    const categories = categoriesRaw
+      .split(',')
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+
+    try {
+      const response = await fetch(`${API_URL}/api/newsletters/sources`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminToken
+        },
+        body: JSON.stringify({
+          source: document.getElementById('sourceName').value,
+          url: document.getElementById('sourceUrl').value,
+          region: document.getElementById('sourceRegion').value || undefined,
+          category: categories.length > 0 ? categories : ['space', 'news']
+        })
+      });
+
+      if (response.ok) {
+        showMessage('dashMessage', 'Source added successfully', 'success');
+        sourceForm.reset();
+        await loadSources();
+        return;
+      }
+
+      const error = await response.json();
+      showMessage('dashMessage', error.error || 'Failed to add source', 'error');
+    } catch (error) {
+      showMessage('dashMessage', 'Error adding source', 'error');
+    }
+  });
+}
+
 // Bind UI events
 const logoutBtn = document.getElementById('logoutBtn');
 if (logoutBtn) {
@@ -328,6 +445,12 @@ if (subscribersTable) {
       const email = target.getAttribute('data-email');
       if (email) {
         deleteSubscriber(email);
+      }
+    }
+    if (action === 'remove-source') {
+      const sourceId = target.getAttribute('data-source-id');
+      if (sourceId) {
+        deleteSource(sourceId);
       }
     }
   });

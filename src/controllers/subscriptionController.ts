@@ -185,18 +185,28 @@ export const updatePreferences = async (req: Request, res: Response): Promise<vo
     const { token } = req.params;
     const { frequency, topics, regions } = req.body;
 
+    console.log(`Updating preferences for token: ${token}`, { frequency, topics, regions });
+
     const subscriber = await Subscriber.findOne({ where: { preferencesToken: token } });
     if (!subscriber) {
+      console.error(`Subscriber not found for token: ${token}`);
       res.status(404).json({ error: 'Subscriber not found' });
       return;
     }
 
-    if (frequency) subscriber.frequency = frequency;
-    if (topics) subscriber.topics = topics;
-    if (regions) subscriber.regions = regions;
+    if (frequency) {
+      subscriber.frequency = frequency;
+      console.log(`Updated frequency from ${subscriber.getDataValue('frequency')} to ${frequency}`);
+    }
+    if (topics && Array.isArray(topics)) subscriber.topics = topics;
+    if (regions && Array.isArray(regions)) subscriber.regions = regions;
+    
     await subscriber.save();
+    console.log(`Preferences saved for ${subscriber.email}`);
 
-    res.status(200).json({ message: 'Preferences updated', subscriber });
+    // Return fully refreshed subscriber object
+    const updated = await Subscriber.findOne({ where: { preferencesToken: token } });
+    res.status(200).json({ message: 'Preferences updated', subscriber: updated });
   } catch (error) {
     console.error('Update preferences error:', error);
     res.status(500).json({ error: 'Failed to update preferences' });

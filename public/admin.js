@@ -356,12 +356,19 @@ if (prefForm) {
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Preferences updated:', result);
         showMessage('dashMessage', 'Preferences updated', 'success');
-        loadSubscribers();
+        document.getElementById('prefForm').style.display = 'none';
+        document.getElementById('prefEmail').value = '';
+        await loadSubscribers();
+        await loadPrefEmails();
       } else {
-        showMessage('dashMessage', 'Failed to update preferences', 'error');
+        const error = await response.json();
+        showMessage('dashMessage', error.error || 'Failed to update preferences', 'error');
       }
     } catch (error) {
+      console.error('Error updating preferences:', error);
       showMessage('dashMessage', 'Error updating preferences', 'error');
     }
   });

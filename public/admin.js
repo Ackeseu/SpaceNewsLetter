@@ -7,6 +7,7 @@ let adminToken = localStorage.getItem('adminToken');
 let allSubscribers = [];
 let allSources = [];
 let currentEditId = null;
+let currentEditEmail = null;
 
 // Login
 const loginForm = document.getElementById('loginForm');
@@ -200,6 +201,7 @@ function editSubscriber(id) {
   const sub = allSubscribers.find(s => s.id == id);
   if (sub) {
     currentEditId = sub.id;
+    currentEditEmail = sub.email;
     document.getElementById('editEmail').value = sub.email;
     document.getElementById('editFirstName').value = sub.firstName || '';
     document.getElementById('editFrequency').value = sub.frequency || 'weekly';
@@ -244,6 +246,26 @@ function showPrefForm(email) {
       cb.checked = (sub.regions || []).includes(cb.value);
     });
   }
+}
+
+async function openPreferencesForEmail(email) {
+  const targetEmail = email || currentEditEmail;
+  if (!targetEmail) {
+    showMessage('dashMessage', 'No subscriber selected', 'error');
+    return;
+  }
+
+  const prefTabBtn = document.querySelector('.tab-btn[data-tab="preferences"]');
+  switchTab('preferences', prefTabBtn);
+
+  const select = document.getElementById('prefEmail');
+  if (!select || select.options.length === 0) {
+    await loadPrefEmails();
+  }
+
+  select.value = targetEmail;
+  showPrefForm(targetEmail);
+  closeModal();
 }
 
 function switchTab(tabName, triggerEl) {
@@ -412,6 +434,13 @@ if (editForm) {
     } catch (error) {
       showMessage('dashMessage', 'Error updating subscriber', 'error');
     }
+  });
+}
+
+const editPrefsBtn = document.getElementById('editPrefsBtn');
+if (editPrefsBtn) {
+  editPrefsBtn.addEventListener('click', () => {
+    openPreferencesForEmail(currentEditEmail);
   });
 }
 

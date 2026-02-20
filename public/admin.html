@@ -126,8 +126,15 @@
       align-items: center;
     }
 
-    .header h1 {
-      font-size: 28px;
+    .header .brand-logo {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .header .brand-logo img {
+      height: 42px;
+      width: auto;
+      display: block;
     }
 
     .logout-btn {
@@ -456,7 +463,9 @@
   <!-- Dashboard -->
   <div class="dashboard" id="dashboard">
     <div class="header">
-      <h1>📊 Admin Dashboard</h1>
+      <div class="brand-logo" aria-label="OASA admin dashboard">
+        <img src="/oasa-logo.png" alt="OASA logo">
+      </div>
       <button class="logout-btn" id="logoutBtn">Logout</button>
     </div>
 

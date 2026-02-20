@@ -240,6 +240,39 @@ export const getSubscriberStats = async (req: Request, res: Response): Promise<v
   }
 };
 
+export const updateSubscriberAdmin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const { firstName, lastName, frequency, isActive } = req.body as {
+      firstName?: string;
+      lastName?: string;
+      frequency?: 'daily' | 'weekly' | 'monthly';
+      isActive?: boolean;
+    };
+
+    const subscriber = await Subscriber.findByPk(id);
+    if (!subscriber) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    if (firstName !== undefined) subscriber.firstName = firstName;
+    if (lastName !== undefined) subscriber.lastName = lastName;
+    if (frequency) subscriber.frequency = frequency;
+    if (isActive !== undefined) subscriber.isActive = isActive;
+
+    await subscriber.save();
+    res.status(200).json({ message: 'Subscriber updated', subscriber });
+  } catch (error) {
+    console.error('Update subscriber admin error:', error);
+    res.status(500).json({ error: 'Failed to update subscriber' });
+  }
+};
+
 export const listAllSubscribers = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!requireAdminToken(req, res)) {

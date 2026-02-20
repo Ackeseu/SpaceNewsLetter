@@ -6,6 +6,7 @@ const API_URL = isFileOrigin
 let adminToken = localStorage.getItem('adminToken');
 let allSubscribers = [];
 let allSources = [];
+let currentEditId = null;
 
 // Login
 const loginForm = document.getElementById('loginForm');
@@ -198,6 +199,7 @@ async function loadPrefEmails() {
 function editSubscriber(id) {
   const sub = allSubscribers.find(s => s.id == id);
   if (sub) {
+    currentEditId = sub.id;
     document.getElementById('editEmail').value = sub.email;
     document.getElementById('editFirstName').value = sub.firstName || '';
     document.getElementById('editFrequency').value = sub.frequency || 'weekly';
@@ -370,6 +372,45 @@ if (prefForm) {
     } catch (error) {
       console.error('Error updating preferences:', error);
       showMessage('dashMessage', 'Error updating preferences', 'error');
+    }
+  });
+}
+
+const editForm = document.getElementById('editForm');
+if (editForm) {
+  editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (!currentEditId) {
+      showMessage('dashMessage', 'No subscriber selected', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/subscriptions/admin/${currentEditId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminToken
+        },
+        body: JSON.stringify({
+          firstName: document.getElementById('editFirstName').value,
+          frequency: document.getElementById('editFrequency').value
+        })
+      });
+
+      if (response.ok) {
+        showMessage('dashMessage', 'Subscriber updated', 'success');
+        closeModal();
+        await loadSubscribers();
+        await loadPrefEmails();
+        return;
+      }
+
+      const error = await response.json();
+      showMessage('dashMessage', error.error || 'Failed to update subscriber', 'error');
+    } catch (error) {
+      showMessage('dashMessage', 'Error updating subscriber', 'error');
     }
   });
 }

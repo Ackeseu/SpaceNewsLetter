@@ -8,7 +8,8 @@ import {
   getPreferences,
   updatePreferences,
   getSubscriberStats,
-  listAllSubscribers
+  listAllSubscribers,
+  updateSubscriberAdmin
 } from '../controllers/subscriptionController';
 
 const router = Router();
@@ -18,6 +19,18 @@ router.get('/stats', getSubscriberStats);
 
 // Admin: list all subscribers (place before dynamic routes)
 router.get('/admin/list', listAllSubscribers);
+
+// Admin: update subscriber
+router.put(
+  '/admin/:id',
+  [
+    body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
+    body('firstName').optional().isString().trim(),
+    body('lastName').optional().isString().trim(),
+    body('isActive').optional().isBoolean()
+  ],
+  updateSubscriberAdmin
+);
 
 // Subscribe to newsletter
 router.post(

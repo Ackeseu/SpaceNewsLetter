@@ -7,28 +7,41 @@ export async function SendNewsletter(myTimer: Timer, context: InvocationContext)
   try {
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
     const senderToken = process.env.NEWSLETTER_SENDER_TOKEN || 'default-token';
-    
-    context.log(`Calling newsletter sending endpoint at ${apiUrl}/api/newsletters/send-scheduled`);
-    
-    const response = await fetch(`${apiUrl}/api/newsletters/send-scheduled`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-sender-token': senderToken
-      },
-      body: JSON.stringify({
-        frequency: 'weekly'
-      })
-    });
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    const sendByFrequency = async (frequency: 'daily' | 'weekly') => {
+      context.log(`Calling newsletter endpoint for ${frequency} subscribers at ${apiUrl}/api/newsletters/send-scheduled`);
+
+      const response = await fetch(`${apiUrl}/api/newsletters/send-scheduled`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-sender-token': senderToken
+        },
+        body: JSON.stringify({ frequency })
+      });
+
+      if (!response.ok) {
+        throw new Error(`[${frequency}] API returned ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json() as { sent: number; failed: number };
+    };
+
+    const dailyResult = await sendByFrequency('daily');
+
+    let weeklyResult: { sent: number; failed: number } = { sent: 0, failed: 0 };
+    const isMondayUtc = new Date().getUTCDay() === 1;
+    if (isMondayUtc) {
+      weeklyResult = await sendByFrequency('weekly');
     }
 
-    const result = await response.json() as { sent: number; failed: number };
+    const result = {
+      sent: dailyResult.sent + weeklyResult.sent,
+      failed: dailyResult.failed + weeklyResult.failed
+    };
     const duration = Date.now() - startTime;
-    
-    context.log(`✓ Newsletter sending completed. Sent ${result.sent} newsletters, ${result.failed} failed in ${duration}ms`);
+
+    context.log(`✓ Newsletter sending completed. Daily sent=${dailyResult.sent}, Daily failed=${dailyResult.failed}, Weekly sent=${weeklyResult.sent}, Weekly failed=${weeklyResult.failed}. Total sent ${result.sent}, failed ${result.failed} in ${duration}ms`);
   } catch (error) {
     context.error(`Error sending newsletter: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
@@ -36,6 +49,6 @@ export async function SendNewsletter(myTimer: Timer, context: InvocationContext)
 }
 
 app.timer('SendNewsletter', {
-  schedule: '0 0 9 * * MON', // Every Monday at 9 AM UTC
+  schedule: '0 0 9 * * *', // Every day at 9 AM UTC
   handler: SendNewsletter
 });

@@ -294,8 +294,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         const sources = await Article.findAll({
           attributes: [[Article.sequelize!.fn('DISTINCT', Article.sequelize!.col('source')), 'source']],
           where: preferenceWhere,
-          raw: true,
-          order: [['pubDate', 'DESC']]
+          raw: true
         });
 
         const sourceList = (sources as any[]).map(s => s.source).filter(Boolean);

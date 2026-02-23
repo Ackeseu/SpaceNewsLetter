@@ -1,4 +1,5 @@
 import Parser from 'rss-parser';
+import * as cheerio from 'cheerio';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 
@@ -138,6 +139,11 @@ const HONG_KONG_KEYWORDS = [
   'hong kong aerospace', 'hong kong technology'
 ];
 
+const OASA_EVENTS_URL = 'https://www.oasahk.org/events';
+const OASA_EVENTS_SOURCE = 'OASA Events';
+const OASA_EVENTS_CATEGORY = ['space', 'events', 'oasa', 'hong-kong'];
+const OASA_EVENTS_REGION = 'hong-kong';
+
 function calculateArticlePriority(title: string, description: string): number {
   const text = (title + ' ' + description).toLowerCase();
   let priority = 0;
@@ -157,6 +163,114 @@ function calculateArticlePriority(title: string, description: string): number {
 
   return priority;
 }
+
+const normalizeText = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const extractEventDate = (text: string): Date | undefined => {
+  const match = text.match(/([A-Z][a-z]{2}\s\d{1,2},\s\d{4})/);
+  if (!match) {
+    return undefined;
+  }
+
+  const parsed = new Date(match[1]);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
+const fetchOasaEvents = async (): Promise<number> => {
+  let articlesAdded = 0;
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(OASA_EVENTS_URL);
+    if (!response.ok) {
+      console.error(`Error fetching OASA events (${response.status}): ${response.statusText}`);
+      return 0;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const eventLinks = new Map<string, {
+      title: string;
+      description: string;
+      imageUrl?: string;
+      pubDate?: Date;
+    }>();
+
+    $('a[href*="/event-details/"]').each((_, element) => {
+      const href = $(element).attr('href');
+      if (!href) {
+        return;
+      }
+
+      const link = href.startsWith('http') ? href : `https://www.oasahk.org${href}`;
+      if (eventLinks.has(link)) {
+        return;
+      }
+
+      const titleText = normalizeText($(element).text())
+        || normalizeText($(element).attr('aria-label') || '')
+        || normalizeText($(element).attr('title') || '');
+
+      if (!titleText) {
+        return;
+      }
+
+      const containerText = normalizeText($(element).parent().text());
+      const pubDate = extractEventDate(containerText);
+      let description = containerText.replace(titleText, '').trim();
+      if (description.length < 20) {
+        description = 'OASA event details and schedule are available on the event page.';
+      }
+      if (description.length > 280) {
+        description = `${description.slice(0, 277)}...`;
+      }
+
+      const imageUrl = $(element).closest('div').find('img').first().attr('src');
+
+      eventLinks.set(link, {
+        title: titleText,
+        description,
+        imageUrl: imageUrl && imageUrl.startsWith('http') ? imageUrl : undefined,
+        pubDate
+      });
+    });
+
+    if (eventLinks.size === 0) {
+      console.log('No OASA events found on the events page.');
+      return 0;
+    }
+
+    for (const [link, event] of eventLinks.entries()) {
+      const existingArticle = await Article.findOne({ where: { link } });
+      if (existingArticle) {
+        continue;
+      }
+
+      await Article.create({
+        title: event.title,
+        description: event.description,
+        link,
+        pubDate: event.pubDate || new Date(),
+        source: OASA_EVENTS_SOURCE,
+        category: OASA_EVENTS_CATEGORY,
+        imageUrl: event.imageUrl,
+        isFeatured: false,
+        priority: 100,
+        region: OASA_EVENTS_REGION
+      });
+
+      articlesAdded++;
+    }
+  } catch (error) {
+    console.error('Error fetching OASA events:', error);
+  }
+
+  return articlesAdded;
+};
 
 export const aggregateNews = async (): Promise<number> => {
   let articlesAdded = 0;
@@ -227,6 +341,12 @@ export const aggregateNews = async (): Promise<number> => {
       console.error(`Error fetching feed from ${feedConfig.source}:`, error);
     }
   }
+
+  const oasaEventsAdded = await fetchOasaEvents();
+  if (oasaEventsAdded > 0) {
+    console.log(`✓ Processed ${oasaEventsAdded} new articles from ${OASA_EVENTS_SOURCE}`);
+  }
+  articlesAdded += oasaEventsAdded;
 
   console.log(`✓ Total new articles added: ${articlesAdded}`);
   return articlesAdded;

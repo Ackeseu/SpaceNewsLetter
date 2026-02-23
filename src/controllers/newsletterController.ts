@@ -271,6 +271,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
 
     let sent = 0;
     let failed = 0;
+    const failedRecipients: Array<{ email: string; reason: string }> = [];
 
     // Send newsletter to each subscriber with diverse articles (max 2 per source)
     for (const subscriber of subscribers) {
@@ -341,15 +342,23 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         } else {
           failed++;
           console.error(`Failed to send newsletter to ${subscriber.email}`);
+          failedRecipients.push({
+            email: subscriber.email,
+            reason: 'Email service returned unsuccessful status'
+          });
         }
       } catch (error) {
         failed++;
         console.error(`Error sending newsletter to subscriber:`, error);
+        failedRecipients.push({
+          email: subscriber.email,
+          reason: error instanceof Error ? error.message : 'Unknown error'
+        });
       }
     }
 
     console.log(`✓ Newsletter sending completed. Sent ${sent}, failed ${failed}`);
-    res.status(200).json({ sent, failed });
+    res.status(200).json({ sent, failed, failedRecipients });
   } catch (error) {
     console.error('Send scheduled newsletters error:', error);
     res.status(500).json({ error: 'Failed to send newsletters' });

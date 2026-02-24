@@ -151,6 +151,12 @@
       background: rgba(255, 255, 255, 0.3);
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .content {
       max-width: 1200px;
       margin: 0 auto;
@@ -466,7 +472,10 @@
       <div class="brand-logo" aria-label="OASA admin dashboard">
         <img src="/oasa-logo.png" alt="OASA logo">
       </div>
-      <button class="logout-btn" id="logoutBtn">Logout</button>
+      <div class="header-actions">
+        <a class="logout-btn" href="https://newspace-newsletter-api.azurewebsites.net/health" target="_blank" rel="noopener noreferrer">API Status</a>
+        <button class="logout-btn" id="logoutBtn">Logout</button>
+      </div>
     </div>
 
     <div class="content">

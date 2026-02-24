@@ -105,6 +105,7 @@ export const sendNewsletterEmail = async (
         .article img { max-width: 100%; height: auto; margin: 10px 0; }
         .read-more { color: #0066cc; text-decoration: none; font-weight: bold; }
         .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }
+        .disclaimer { margin-top: 16px; font-size: 10px; line-height: 1.5; color: #777; text-align: left; }
       </style>
     </head>
     <body>
@@ -127,6 +128,7 @@ export const sendNewsletterEmail = async (
         <div class="footer">
           <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
           <p><a href="${preferencesUrl}">Manage preferences</a> | <a href="${unsubscribeUrl}">Unsubscribe</a></p>
+          <p class="disclaimer">This communication (and any attachments) is directed in confidence to the addressee(s) listed above, and may not otherwise be distributed, copied or used. The contents of this communication may also be subject to privilege, and all rights to that privilege are expressly claimed and not waived. If you have received this communication in error, please notify us by reply e-mail or by telephone and delete this communication (and any attachments) without making a copy. Before opening or using attachments, you should check them for viruses and defects. We do not accept liability in connection with computer virus, data corruption, delay, interruption, unauthorized access or unauthorized amendment.  本電郵(連同任何附加檔案)只供指定收件人閱讀，內容可能包括只有指定收件人才有權接收的資料。如你並非本電郵的原定收件人，請勿使用、保留、披露、複製、列印、轉發或發放本電郵。如本電郵誤發給你，請從電腦系統刪除本電郵所有複本(包括附加檔案)，並立即通知發件人。 創星匯並不宣稱或保證本電郵不含軟件病毒，也不宣稱或保證本電郵所載資料準確、真實和完整。 如本電郵的指定收件人或其他人因本電郵含有軟件病毒或因本電郵所載資料不準確、不真實或不完整而蒙受損害或損失，創星匯概不承擔法律責任。</p>
         </div>
       </div>
     </body>

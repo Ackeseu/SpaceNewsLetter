@@ -89,8 +89,10 @@ export const sendNewsletterEmail = async (
   unsubscribeToken: string,
   preferencesToken: string
 ): Promise<boolean> => {
-  const unsubscribeUrl = `${process.env.APP_URL || 'http://localhost:3000'}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
-  const preferencesUrl = `${process.env.APP_URL || 'http://localhost:3000'}/api/subscriptions/preferences/${preferencesToken}`;
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const unsubscribeUrl = `${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
+  const preferencesUrl = `${appUrl}/api/subscriptions/preferences/${preferencesToken}`;
+  const logoUrl = `${appUrl}/oasa-logo.png`;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -100,6 +102,7 @@ export const sendNewsletterEmail = async (
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; }
         .container { max-width: 700px; margin: 0 auto; background-color: white; padding: 20px; }
         .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; }
+        .header-logo { max-width: 220px; height: auto; margin: 0 auto 14px; display: block; }
         .article { margin: 20px 0; padding: 15px; border-left: 4px solid #0066cc; background-color: #f9f9f9; }
         .article h3 { margin-top: 0; }
         .article img { max-width: 100%; height: auto; margin: 10px 0; }
@@ -111,7 +114,8 @@ export const sendNewsletterEmail = async (
     <body>
       <div class="container">
         <div class="header">
-          <h1>🚀 NewSpace Newsletter</h1>
+          <img src="${logoUrl}" alt="OASA logo" class="header-logo">
+          <h1>OASA NewSpace Newsletter</h1>
           <p>Latest updates from space exploration and the low-altitude economy</p>
         </div>
         

@@ -34,6 +34,16 @@ const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> =
   return whereClause;
 };
 
+const OASA_EVENTS_SOURCE = 'OASA Events';
+const DEFAULT_MAX_PER_SOURCE = 2;
+const MAX_PER_SOURCE_OVERRIDES: Record<string, number> = {
+  [OASA_EVENTS_SOURCE]: 1
+};
+
+const getMaxPerSource = (source: string): number => {
+  return MAX_PER_SOURCE_OVERRIDES[source] ?? DEFAULT_MAX_PER_SOURCE;
+};
+
 const requireAdminToken = (req: Request, res: Response): boolean => {
   const adminToken = process.env.ADMIN_TEST_TOKEN;
   const providedToken = req.header('x-admin-token') || req.query.token;
@@ -280,6 +290,23 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         const preferenceWhere = buildPreferenceWhere(subscriber);
         const freshnessThreshold = new Date();
         freshnessThreshold.setDate(freshnessThreshold.getDate() - 7);
+        const selectedBySource = new Map<string, number>();
+
+        const appendArticlesWithCap = (candidates: Article[]): void => {
+          for (const article of candidates) {
+            if (articles.length >= maxArticles) {
+              break;
+            }
+
+            const sourceCount = selectedBySource.get(article.source) || 0;
+            if (sourceCount >= getMaxPerSource(article.source)) {
+              continue;
+            }
+
+            articles.push(article);
+            selectedBySource.set(article.source, sourceCount + 1);
+          }
+        };
 
         // Step 1: Prioritize Hong Kong articles (up to 3)
         const hongKongArticles: Article[] = await Article.findAll({
@@ -292,7 +319,8 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           order: [['priority', 'DESC'], ['pubDate', 'DESC']]
         });
 
-        const articles: Article[] = [...hongKongArticles];
+        const articles: Article[] = [];
+        appendArticlesWithCap(hongKongArticles);
 
         // Step 2: Get diverse business-focused articles from different sources
         const sources = await Article.findAll({
@@ -302,10 +330,15 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         });
 
         const sourceList = (sources as any[]).map(s => s.source).filter(Boolean);
-        const articlesPerSource = 2;
-
         for (const source of sourceList) {
           if (articles.length >= maxArticles) break;
+
+          const sourceCount = selectedBySource.get(source) || 0;
+          const maxPerSource = getMaxPerSource(source);
+          const remainingForSource = Math.max(maxPerSource - sourceCount, 0);
+          if (remainingForSource === 0) {
+            continue;
+          }
           
           const sourceArticles: Article[] = await Article.findAll({
             where: {
@@ -315,10 +348,10 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
               pubDate: { [Op.gte]: freshnessThreshold },
               ...preferenceWhere
             },
-            limit: articlesPerSource,
+            limit: remainingForSource,
             order: [['priority', 'DESC'], ['pubDate', 'DESC']]
           });
-          articles.push(...sourceArticles);
+          appendArticlesWithCap(sourceArticles);
         }
 
         // Step 3: Fill remaining slots with latest business articles
@@ -332,7 +365,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
             limit: maxArticles - articles.length,
             order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
           });
-          articles.push(...additionalArticles);
+          appendArticlesWithCap(additionalArticles);
         }
 
         // Step 4: Fallback to older articles only if needed
@@ -345,7 +378,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
             limit: maxArticles - articles.length,
             order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
           });
-          articles.push(...fallbackArticles);
+          appendArticlesWithCap(fallbackArticles);
         }
 
         const preferencesToken = await ensurePreferencesToken(subscriber);

@@ -278,11 +278,15 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       try {
         const maxArticles = 12;
         const preferenceWhere = buildPreferenceWhere(subscriber);
+        const freshnessThreshold = new Date();
+        freshnessThreshold.setDate(freshnessThreshold.getDate() - 7);
 
         // Step 1: Prioritize Hong Kong articles (up to 3)
         const hongKongArticles: Article[] = await Article.findAll({
           where: {
-            priority: { [Op.gte]: 100 }
+            priority: { [Op.gte]: 100 },
+            pubDate: { [Op.gte]: freshnessThreshold },
+            ...preferenceWhere
           },
           limit: 3,
           order: [['priority', 'DESC'], ['pubDate', 'DESC']]
@@ -308,6 +312,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
               source,
               id: { [Op.notIn]: articles.map(a => a.id) },
               priority: { [Op.gte]: 0 },
+              pubDate: { [Op.gte]: freshnessThreshold },
               ...preferenceWhere
             },
             limit: articlesPerSource,
@@ -321,12 +326,26 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           const additionalArticles = await Article.findAll({
             where: {
               id: { [Op.notIn]: articles.map(a => a.id) },
+              pubDate: { [Op.gte]: freshnessThreshold },
               ...preferenceWhere
             },
             limit: maxArticles - articles.length,
             order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
           });
           articles.push(...additionalArticles);
+        }
+
+        // Step 4: Fallback to older articles only if needed
+        if (articles.length < maxArticles) {
+          const fallbackArticles = await Article.findAll({
+            where: {
+              id: { [Op.notIn]: articles.map(a => a.id) },
+              ...preferenceWhere
+            },
+            limit: maxArticles - articles.length,
+            order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
+          });
+          articles.push(...fallbackArticles);
         }
 
         const preferencesToken = await ensurePreferencesToken(subscriber);

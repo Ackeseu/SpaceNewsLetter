@@ -141,7 +141,7 @@ export const sendNewsletterEmail = async (
 
   return await sendEmail({
     to: email,
-    subject: `NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
+    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
     htmlContent
   });
 };

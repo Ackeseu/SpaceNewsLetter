@@ -143,6 +143,12 @@ const OASA_EVENTS_URL = 'https://www.oasahk.org/events';
 const OASA_EVENTS_SOURCE = 'OASA Events';
 const OASA_EVENTS_CATEGORY = ['space', 'events', 'oasa', 'hong-kong'];
 const OASA_EVENTS_REGION = 'hong-kong';
+const OASA_EVENTS_TITLE_EXCLUSIONS = [
+  'share event on x',
+  'share event on facebook',
+  'share event',
+  'secure your spot'
+];
 
 function calculateArticlePriority(title: string, description: string): number {
   const text = (title + ' ' + description).toLowerCase();
@@ -216,6 +222,15 @@ const fetchOasaEvents = async (): Promise<number> => {
         || normalizeText($(element).attr('title') || '');
 
       if (!titleText) {
+        return;
+      }
+
+      const normalizedTitle = titleText.toLowerCase();
+      if (OASA_EVENTS_TITLE_EXCLUSIONS.some((keyword) => normalizedTitle.includes(keyword))) {
+        return;
+      }
+
+      if (titleText.length < 6) {
         return;
       }
 

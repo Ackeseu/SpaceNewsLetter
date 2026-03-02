@@ -1,7 +1,8 @@
-import { EmailClient, EmailMessage } from '@azure/communication-email';
+import { EmailAttachment, EmailClient, EmailMessage } from '@azure/communication-email';
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
+import fetch from 'node-fetch';
 
 const connectionString = process.env.AZURE_COMMUNICATION_CONNECTION_STRING || '';
 const senderEmail = process.env.SENDER_EMAIL || '';
@@ -12,11 +13,84 @@ if (connectionString) {
   emailClient = new EmailClient(connectionString);
 }
 
+const buildTitleReferenceImage = (title: string): string => {
+  const cleaned = title.replace(/\s+/g, ' ').trim() || 'Space Update';
+  // Use first 50 chars of title to keep URL reasonable
+  const shortTitle = cleaned.length > 50 ? cleaned.substring(0, 50) + '...' : cleaned;
+  const text = encodeURIComponent(shortTitle);
+  // Space-themed dark blue background with white text
+  return `https://placehold.co/640x360/1a2332/ffffff/png?text=${text}&font=roboto`;
+};
+
 interface EmailOptions {
   to: string;
   subject: string;
   htmlContent: string;
+  attachments?: EmailAttachment[];
 }
+
+const TRANSPARENT_PIXEL_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Y5mQAAAAASUVORK5CYII=';
+
+const getContentTypeExtension = (contentType: string): string => {
+  if (contentType.includes('png')) return 'png';
+  if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg';
+  if (contentType.includes('gif')) return 'gif';
+  if (contentType.includes('webp')) return 'webp';
+  return 'img';
+};
+
+const loadLogoBase64 = (): string => {
+  const logoPath = path.resolve(__dirname, '../../public/oasa-logo.png');
+  if (!fs.existsSync(logoPath)) {
+    return TRANSPARENT_PIXEL_BASE64;
+  }
+
+  try {
+    return fs.readFileSync(logoPath).toString('base64');
+  } catch {
+    return TRANSPARENT_PIXEL_BASE64;
+  }
+};
+
+const buildInlineArticleAttachment = async (
+  imageUrl: string,
+  index: number,
+  cid: string,
+  logoFallbackBase64: string
+): Promise<EmailAttachment> => {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status}`);
+    }
+
+    const contentTypeHeader = response.headers.get('content-type') || 'image/png';
+    const contentType = contentTypeHeader.split(';')[0].trim().toLowerCase();
+    if (!contentType.startsWith('image/')) {
+      throw new Error(`Invalid image content-type: ${contentType}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) {
+      throw new Error('Downloaded image is empty');
+    }
+
+    return {
+      name: `article-${index + 1}.${getContentTypeExtension(contentType)}`,
+      contentType,
+      contentInBase64: buffer.toString('base64'),
+      contentId: cid
+    };
+  } catch {
+    return {
+      name: `article-${index + 1}-fallback.png`,
+      contentType: 'image/png',
+      contentInBase64: logoFallbackBase64,
+      contentId: cid
+    };
+  }
+};
 
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
   if (!emailClient) {
@@ -33,7 +107,8 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
       },
       recipients: {
         to: [{ address: options.to }]
-      }
+      },
+      attachments: options.attachments
     };
 
     const poller = await emailClient.beginSend(message);
@@ -92,7 +167,32 @@ export const sendNewsletterEmail = async (
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const unsubscribeUrl = `${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
   const preferencesUrl = `${appUrl}/api/subscriptions/preferences/${preferencesToken}`;
-  const logoUrl = `${appUrl}/oasa-logo.png`;
+  const logoCid = 'oasa-header-logo';
+  const logoBase64 = loadLogoBase64();
+
+  const articleWithImageCids = await Promise.all(
+    articles.map(async (article, index) => {
+      const cid = `article-image-${index + 1}`;
+      const imageUrl = article.imageUrl || buildTitleReferenceImage(article.title || 'Space update');
+      const attachment = await buildInlineArticleAttachment(imageUrl, index, cid, logoBase64);
+
+      return {
+        article,
+        cid,
+        attachment
+      };
+    })
+  );
+
+  const attachments: EmailAttachment[] = [
+    {
+      name: 'oasa-logo.png',
+      contentType: 'image/png',
+      contentInBase64: logoBase64,
+      contentId: logoCid
+    },
+    ...articleWithImageCids.map(item => item.attachment)
+  ];
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -114,20 +214,22 @@ export const sendNewsletterEmail = async (
     <body>
       <div class="container">
         <div class="header">
-          <img src="${logoUrl}" alt="OASA logo" class="header-logo">
+          <img src="cid:${logoCid}" alt="OASA logo" class="header-logo">
           <h1>OASA NewSpace Newsletter</h1>
           <p>Latest updates from space exploration and the low-altitude economy</p>
         </div>
         
-        ${articles.map(article => `
+        ${articleWithImageCids.map(({ article, cid }) => {
+          return `
           <div class="article">
             <h3>${article.title}</h3>
-            ${article.imageUrl ? `<img src="${article.imageUrl}" alt="${article.title}">` : ''}
+            <img src="cid:${cid}" alt="${article.title}">
             <p>${article.description}</p>
             <p><a href="${article.link}" class="read-more">Read more →</a></p>
             <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString()}</p>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
         
         <div class="footer">
           <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
@@ -142,6 +244,7 @@ export const sendNewsletterEmail = async (
   return await sendEmail({
     to: email,
     subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
-    htmlContent
+    htmlContent,
+    attachments
   });
 };

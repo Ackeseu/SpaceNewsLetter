@@ -151,59 +151,12 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
 
     const maxArticles = Number(process.env.MAX_ARTICLES_PER_NEWSLETTER || 10);
     const preferenceWhere = buildPreferenceWhere(subscriber);
-    
-    // Step 1: Get all Hong Kong priority articles first
-    const hongKongArticles = await Article.findAll({
-      where: {
-        priority: { [Op.gte]: 100 }
-      },
-      limit: 3,
-      order: [['priority', 'DESC'], ['pubDate', 'DESC']]
+
+    const articles = await Article.findAll({
+      where: preferenceWhere,
+      limit: maxArticles,
+      order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
     });
-
-    let articles: any[] = [...hongKongArticles];
-    const remainingSlots = maxArticles - articles.length;
-
-    if (remainingSlots > 0) {
-      // Step 2: Get diverse business-focused articles from different sources
-      const sources = await Article.findAll({
-        attributes: ['source'],
-        where: preferenceWhere,
-        group: ['source'],
-        raw: true
-      }) as Array<{ source: string }>;
-
-      const articlesPerSource = Math.min(2, Math.ceil(remainingSlots / sources.length));
-      
-      for (const { source } of sources) {
-        if (articles.length >= maxArticles) break;
-        
-        const sourceArticles = await Article.findAll({
-          where: {
-            source,
-            id: { [Op.notIn]: articles.map(a => a.id) },
-            priority: { [Op.gte]: 0 },
-            ...preferenceWhere
-          },
-          limit: articlesPerSource,
-          order: [['priority', 'DESC'], ['pubDate', 'DESC']]
-        });
-        articles.push(...sourceArticles);
-      }
-    }
-    
-    // Step 3: Fill remaining slots with latest articles
-    if (articles.length < maxArticles) {
-      const additionalArticles = await Article.findAll({
-        where: {
-          id: { [Op.notIn]: articles.map(a => a.id) },
-          ...preferenceWhere
-        },
-        limit: maxArticles - articles.length,
-        order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
-      });
-      articles.push(...additionalArticles);
-    }
 
     const preferencesToken = await ensurePreferencesToken(subscriber);
     const emailSent = await sendNewsletterEmail(
@@ -308,74 +261,25 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           }
         };
 
-        // Step 1: Prioritize Hong Kong articles (up to 3)
-        const hongKongArticles: Article[] = await Article.findAll({
+        const articles: Article[] = [];
+        const recentCandidates: Article[] = await Article.findAll({
           where: {
-            priority: { [Op.gte]: 100 },
             pubDate: { [Op.gte]: freshnessThreshold },
             ...preferenceWhere
           },
-          limit: 3,
-          order: [['priority', 'DESC'], ['pubDate', 'DESC']]
+          limit: 200,
+          order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
         });
+        appendArticlesWithCap(recentCandidates);
 
-        const articles: Article[] = [];
-        appendArticlesWithCap(hongKongArticles);
-
-        // Step 2: Get diverse business-focused articles from different sources
-        const sources = await Article.findAll({
-          attributes: [[Article.sequelize!.fn('DISTINCT', Article.sequelize!.col('source')), 'source']],
-          where: preferenceWhere,
-          raw: true
-        });
-
-        const sourceList = (sources as any[]).map(s => s.source).filter(Boolean);
-        for (const source of sourceList) {
-          if (articles.length >= maxArticles) break;
-
-          const sourceCount = selectedBySource.get(source) || 0;
-          const maxPerSource = getMaxPerSource(source);
-          const remainingForSource = Math.max(maxPerSource - sourceCount, 0);
-          if (remainingForSource === 0) {
-            continue;
-          }
-          
-          const sourceArticles: Article[] = await Article.findAll({
-            where: {
-              source,
-              id: { [Op.notIn]: articles.map(a => a.id) },
-              priority: { [Op.gte]: 0 },
-              pubDate: { [Op.gte]: freshnessThreshold },
-              ...preferenceWhere
-            },
-            limit: remainingForSource,
-            order: [['priority', 'DESC'], ['pubDate', 'DESC']]
-          });
-          appendArticlesWithCap(sourceArticles);
-        }
-
-        // Step 3: Fill remaining slots with latest business articles
+        // Step 2: Fallback to older articles only if needed
         if (articles.length < maxArticles) {
-          const additionalArticles = await Article.findAll({
-            where: {
-              id: { [Op.notIn]: articles.map(a => a.id) },
-              pubDate: { [Op.gte]: freshnessThreshold },
-              ...preferenceWhere
-            },
-            limit: maxArticles - articles.length,
-            order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
-          });
-          appendArticlesWithCap(additionalArticles);
-        }
-
-        // Step 4: Fallback to older articles only if needed
-        if (articles.length < maxArticles) {
-          const fallbackArticles = await Article.findAll({
+          const fallbackArticles: Article[] = await Article.findAll({
             where: {
               id: { [Op.notIn]: articles.map(a => a.id) },
               ...preferenceWhere
             },
-            limit: maxArticles - articles.length,
+            limit: 200,
             order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
           });
           appendArticlesWithCap(fallbackArticles);

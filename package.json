@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "backfill:summaries": "ts-node backfill-summaries.ts"
   },
   "keywords": [
     "newsletter",

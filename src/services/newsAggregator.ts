@@ -2,6 +2,7 @@ import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
+import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
 
 interface RSSFeed {
   url: string;
@@ -117,7 +118,7 @@ const parser = new Parser({
   }
 });
 
-// Keywords indicating business/commercial focus (vs technical/astronomy)
+// Keywords indicating business/commercial focus
 const BUSINESS_KEYWORDS = [
   'market', 'investment', 'funding', 'valuation', 'ipo', 'acquisition',
   'contract', 'deal', 'partnership', 'revenue', 'profit', 'business',
@@ -126,17 +127,21 @@ const BUSINESS_KEYWORDS = [
   'satellite operator', 'launch service', 'constellation', 'deployment'
 ];
 
-// Keywords to deprioritize (technical/astronomy)
-const TECHNICAL_KEYWORDS = [
-  'galaxy', 'exoplanet', 'nebula', 'quasar', 'telescope observation',
-  'cosmic ray', 'dark matter', 'black hole discovery', 'stellar',
-  'astrophysics', 'cosmology', 'gravitational wave'
+// Keywords indicating space technology content
+const SPACE_TECH_KEYWORDS = [
+  'satellite', 'payload', 'launch vehicle', 'rocket engine', 'propulsion',
+  'avionics', 'spacecraft', 'orbital', 'navigation', 'remote sensing',
+  'communications satellite', 'earth observation', 'space station',
+  'guidance system', 'robotics', 'autonomous', 'aerospace technology'
 ];
 
-// Hong Kong priority keywords
 const HONG_KONG_KEYWORDS = [
   'hong kong', 'hongkong', 'hk space', 'hong kong satellite',
   'hong kong aerospace', 'hong kong technology'
+];
+
+const ASIA_KEYWORDS = [
+  'asia', 'asian', 'china', 'japan', 'korea', 'singapore', 'india', 'hong kong', 'hongkong'
 ];
 
 const OASA_EVENTS_URL = 'https://www.oasahk.org/events';
@@ -150,24 +155,62 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'secure your spot'
 ];
 
-function calculateArticlePriority(title: string, description: string): number {
-  const text = (title + ' ' + description).toLowerCase();
-  let priority = 0;
+function calculateArticlePriority(
+  title: string,
+  description: string,
+  metadata?: {
+    source?: string;
+    category?: string[];
+    region?: string;
+    link?: string;
+  }
+): number {
+  const text = `${title} ${description}`.toLowerCase();
+  const source = (metadata?.source || '').toLowerCase();
+  const region = (metadata?.region || '').toLowerCase();
+  const link = (metadata?.link || '').toLowerCase();
+  const category = (metadata?.category || []).map((value) => value.toLowerCase());
 
-  // Top priority: Hong Kong content (+100)
-  if (HONG_KONG_KEYWORDS.some(keyword => text.includes(keyword))) {
-    priority += 100;
+  const businessMatches = BUSINESS_KEYWORDS.filter((keyword) => text.includes(keyword)).length;
+  const techMatches = SPACE_TECH_KEYWORDS.filter((keyword) => text.includes(keyword)).length;
+
+  const isBusiness = businessMatches > 0 || category.includes('business');
+  const isTechnology = techMatches > 0 || category.includes('technology') || category.includes('tech');
+  const isAsiaRelated =
+    ['asia', 'china', 'hong-kong', 'hk'].includes(region)
+    || category.some((value) => ['asia', 'china', 'hong-kong'].includes(value))
+    || ASIA_KEYWORDS.some((keyword) => text.includes(keyword))
+    || HONG_KONG_KEYWORDS.some((keyword) => text.includes(keyword));
+
+  const isOasaEvent =
+    source.includes('oasa')
+    || category.includes('oasa')
+    || (category.includes('events') && link.includes('oasahk.org'))
+    || link.includes('oasahk.org/event');
+
+  // Requested display priority order:
+  // 1) OASA events
+  // 2) Asia related space business
+  // 3) Global space business
+  // 4) Global space technology
+  // 5) Remaining space items
+  if (isOasaEvent) {
+    return 500 + businessMatches + techMatches;
   }
 
-  // High priority: Business focus (+20)
-  const businessMatches = BUSINESS_KEYWORDS.filter(keyword => text.includes(keyword)).length;
-  priority += businessMatches * 2;
+  if (isAsiaRelated && isBusiness) {
+    return 400 + businessMatches;
+  }
 
-  // Lower priority: Technical/astronomy content (-10)
-  const technicalMatches = TECHNICAL_KEYWORDS.filter(keyword => text.includes(keyword)).length;
-  priority -= technicalMatches * 10;
+  if (isBusiness) {
+    return 300 + businessMatches;
+  }
 
-  return priority;
+  if (isTechnology) {
+    return 200 + techMatches;
+  }
+
+  return 100;
 }
 
 const normalizeText = (value: string): string => value.replace(/\s+/g, ' ').trim();
@@ -240,9 +283,7 @@ const fetchOasaEvents = async (): Promise<number> => {
       if (description.length < 20) {
         description = 'OASA event details and schedule are available on the event page.';
       }
-      if (description.length > 280) {
-        description = `${description.slice(0, 277)}...`;
-      }
+      description = trimTextForEmail(description, 420);
 
       const imageUrl = $(element).closest('div').find('img').first().attr('src');
 
@@ -274,7 +315,12 @@ const fetchOasaEvents = async (): Promise<number> => {
         category: OASA_EVENTS_CATEGORY,
         imageUrl: event.imageUrl,
         isFeatured: false,
-        priority: 100,
+        priority: calculateArticlePriority(event.title, event.description, {
+          source: OASA_EVENTS_SOURCE,
+          category: OASA_EVENTS_CATEGORY,
+          region: OASA_EVENTS_REGION,
+          link
+        }),
         region: OASA_EVENTS_REGION
       });
 
@@ -307,14 +353,18 @@ export const aggregateNews = async (): Promise<number> => {
           if (existingArticle) continue;
 
           const title = item.title || 'Untitled';
-          const description = item.contentSnippet || item.content || '';
+          const rawDescription = item.contentSnippet || item.content || '';
+          const description = buildArticleSummary(title, rawDescription);
 
           // Calculate priority score
-          const priority = calculateArticlePriority(title, description);
+          const priority = calculateArticlePriority(title, rawDescription, {
+            source: feedConfig.source,
+            category: feedConfig.category,
+            region: feedConfig.region,
+            link: item.link || ''
+          });
 
-          // Check if article is business-focused or Hong Kong related
-          const isBusinessFocused = priority > 0;
-          const isHongKongRelated = priority >= 100;
+          const isTopPriorityArticle = priority >= 500;
 
           // Extract image URL
           let imageUrl: string | undefined;
@@ -335,7 +385,7 @@ export const aggregateNews = async (): Promise<number> => {
             source: feedConfig.source,
             category: feedConfig.category,
             imageUrl,
-            isFeatured: isHongKongRelated, // Auto-feature Hong Kong articles
+            isFeatured: isTopPriorityArticle,
             priority,
             region: feedConfig.region
           });
@@ -343,8 +393,8 @@ export const aggregateNews = async (): Promise<number> => {
           articlesAdded++;
           sourceArticleCount++;
 
-          if (isHongKongRelated) {
-            console.log(`  🇭🇰 HIGH PRIORITY: Hong Kong-related article from ${feedConfig.source}`);
+          if (priority >= 400) {
+            console.log(`  ⭐ HIGH PRIORITY: Ranked article from ${feedConfig.source}`);
           }
         } catch (error) {
           console.error(`Error saving article from ${feedConfig.source}:`, error);
@@ -390,13 +440,18 @@ export const fetchNewsAPI = async (query: string = 'space exploration'): Promise
 
           await Article.create({
             title: item.title,
-            description: item.description || '',
+            description: buildArticleSummary(item.title, item.description || item.content || ''),
             link: item.url,
             pubDate: new Date(item.publishedAt),
             source: item.source.name,
-            category: ['news'],
+            category: ['space', 'news'],
             imageUrl: item.urlToImage,
-            isFeatured: false
+            isFeatured: false,
+            priority: calculateArticlePriority(item.title, item.description || item.content || '', {
+              source: item.source.name,
+              category: ['space', 'news'],
+              link: item.url
+            })
           });
         } catch (error) {
           console.error('Error saving NewsAPI article:', error);

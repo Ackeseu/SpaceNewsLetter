@@ -1,5 +1,6 @@
 import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
+import crypto from 'crypto';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
@@ -154,6 +155,28 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'share event',
   'secure your spot'
 ];
+
+const AI_TITLE_IMAGES_ENABLED = (process.env.AI_TITLE_IMAGES_ENABLED || 'true').toLowerCase() !== 'false';
+
+const buildAiTitleImageUrl = (title: string): string => {
+  const cleaned = title.replace(/\s+/g, ' ').trim() || 'Space Update';
+  const prompt = 'space news illustration cinematic no text no logos';
+  const seed = crypto.createHash('sha256').update(cleaned.toLowerCase()).digest('hex').slice(0, 12);
+  const encodedPrompt = encodeURIComponent(prompt);
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=640&height=360&nologo=true&seed=${seed}`;
+};
+
+const resolveArticleImageUrl = (title: string, sourceImageUrl?: string): string | undefined => {
+  if (sourceImageUrl && /^https?:\/\//i.test(sourceImageUrl)) {
+    return sourceImageUrl;
+  }
+
+  if (!AI_TITLE_IMAGES_ENABLED) {
+    return undefined;
+  }
+
+  return buildAiTitleImageUrl(title);
+};
 
 function calculateArticlePriority(
   title: string,
@@ -313,7 +336,7 @@ const fetchOasaEvents = async (): Promise<number> => {
         pubDate: event.pubDate || new Date(),
         source: OASA_EVENTS_SOURCE,
         category: OASA_EVENTS_CATEGORY,
-        imageUrl: event.imageUrl,
+        imageUrl: resolveArticleImageUrl(event.title, event.imageUrl),
         isFeatured: false,
         priority: calculateArticlePriority(event.title, event.description, {
           source: OASA_EVENTS_SOURCE,
@@ -367,14 +390,16 @@ export const aggregateNews = async (): Promise<number> => {
           const isTopPriorityArticle = priority >= 500;
 
           // Extract image URL
-          let imageUrl: string | undefined;
+          let sourceImageUrl: string | undefined;
           if (item.enclosure?.url) {
-            imageUrl = item.enclosure.url;
+            sourceImageUrl = item.enclosure.url;
           } else if ((item as any).mediaContent) {
-            imageUrl = (item as any).mediaContent.$.url;
+            sourceImageUrl = (item as any).mediaContent.$.url;
           } else if ((item as any).mediaThumbnail) {
-            imageUrl = (item as any).mediaThumbnail.$.url;
+            sourceImageUrl = (item as any).mediaThumbnail.$.url;
           }
+
+          const imageUrl = resolveArticleImageUrl(title, sourceImageUrl);
 
           // Create article with priority
           await Article.create({
@@ -445,7 +470,7 @@ export const fetchNewsAPI = async (query: string = 'space exploration'): Promise
             pubDate: new Date(item.publishedAt),
             source: item.source.name,
             category: ['space', 'news'],
-            imageUrl: item.urlToImage,
+            imageUrl: resolveArticleImageUrl(item.title, item.urlToImage),
             isFeatured: false,
             priority: calculateArticlePriority(item.title, item.description || item.content || '', {
               source: item.source.name,

@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
-    "backfill:summaries": "ts-node backfill-summaries.ts"
+    "backfill:summaries": "ts-node backfill-summaries.ts",
+    "backfill:title-images": "ts-node backfill-title-images.ts"
   },
   "keywords": [
     "newsletter",

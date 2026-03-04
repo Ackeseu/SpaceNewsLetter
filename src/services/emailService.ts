@@ -10,6 +10,10 @@ const senderEmail = process.env.SENDER_EMAIL || '';
 const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
 const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
 const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
+const imageCachePlaceholderTtlHours = Number(process.env.IMAGE_CACHE_PLACEHOLDER_TTL_HOURS || 6);
+const aiImageProvider = (process.env.AI_IMAGE_PROVIDER || 'pollinations').toLowerCase();
+const openAiApiKey = process.env.OPENAI_API_KEY || '';
+const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
 
 let emailClient: EmailClient | null = null;
 
@@ -40,6 +44,7 @@ type CachedImagePayload = {
   contentType: string;
   contentInBase64: string;
   savedAt: string;
+  source?: 'generated' | 'placeholder';
 };
 
 const isAiTitleImageUrl = (imageUrl: string): boolean => /image\.pollinations\.ai\/prompt\//i.test(imageUrl);
@@ -73,7 +78,10 @@ const getCachedImagePayload = async (cacheKey: string): Promise<CachedImagePaylo
     }
 
     const ageHours = (Date.now() - savedAt) / (1000 * 60 * 60);
-    if (ageHours > imageCacheTtlHours) {
+    const source = parsed.source === 'generated' ? 'generated' : 'placeholder';
+    const ttlHours = source === 'generated' ? imageCacheTtlHours : imageCachePlaceholderTtlHours;
+
+    if (ageHours > ttlHours) {
       return null;
     }
 
@@ -98,6 +106,81 @@ const setCachedImagePayload = async (cacheKey: string, payload: CachedImagePaylo
     await fs.promises.writeFile(cachePath, JSON.stringify(payload), 'utf-8');
   } catch {
     // ignore cache write failures
+  }
+};
+
+const buildImageGenerationPrompt = (title: string): string => {
+  const cleaned = title.replace(/\s+/g, ' ').trim() || 'Space Update';
+  return `Cinematic, editorial-style space news illustration for: ${cleaned}. No text, no logos, no watermarks.`;
+};
+
+const tryGenerateOpenAiTitleImage = async (title: string): Promise<CachedImagePayload | null> => {
+  if (!openAiApiKey) {
+    return null;
+  }
+
+  try {
+    const prompt = buildImageGenerationPrompt(title);
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openAiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: openAiImageModel,
+        prompt,
+        size: '1024x1024'
+      })
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as {
+      data?: Array<{ b64_json?: string; url?: string }>;
+    };
+    const first = data?.data?.[0];
+    if (!first) {
+      return null;
+    }
+
+    if (first.b64_json) {
+      return {
+        contentType: 'image/png',
+        contentInBase64: first.b64_json,
+        savedAt: new Date().toISOString(),
+        source: 'generated'
+      };
+    }
+
+    if (first.url) {
+      const generatedResponse = await fetch(first.url);
+      if (!generatedResponse.ok) {
+        return null;
+      }
+
+      const generatedType = (generatedResponse.headers.get('content-type') || 'image/png')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      const generatedBuffer = Buffer.from(await generatedResponse.arrayBuffer());
+      if (!generatedType.startsWith('image/') || generatedBuffer.length === 0) {
+        return null;
+      }
+
+      return {
+        contentType: generatedType,
+        contentInBase64: generatedBuffer.toString('base64'),
+        savedAt: new Date().toISOString(),
+        source: 'generated'
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
   }
 };
 
@@ -129,14 +212,29 @@ const buildInlineArticleAttachment = async (
   cid: string
 ): Promise<EmailAttachment> => {
   const cacheKey = getImageCacheKey(title);
+  const isAiImage = isAiTitleImageUrl(imageUrl);
 
-  if (isAiTitleImageUrl(imageUrl)) {
+  if (isAiImage) {
     const cachedPayload = await getCachedImagePayload(cacheKey);
     if (cachedPayload) {
       return {
         name: `article-${index + 1}.${getContentTypeExtension(cachedPayload.contentType)}`,
         contentType: cachedPayload.contentType,
         contentInBase64: cachedPayload.contentInBase64,
+        contentId: cid
+      };
+    }
+  }
+
+  if (isAiImage && aiImageProvider === 'openai') {
+    const generatedPayload = await tryGenerateOpenAiTitleImage(title);
+    if (generatedPayload) {
+      await setCachedImagePayload(cacheKey, generatedPayload);
+
+      return {
+        name: `article-${index + 1}.${getContentTypeExtension(generatedPayload.contentType)}`,
+        contentType: generatedPayload.contentType,
+        contentInBase64: generatedPayload.contentInBase64,
         contentId: cid
       };
     }
@@ -159,11 +257,12 @@ const buildInlineArticleAttachment = async (
       throw new Error('Downloaded image is empty');
     }
 
-    if (isAiTitleImageUrl(imageUrl)) {
+    if (isAiImage) {
       await setCachedImagePayload(cacheKey, {
         contentType,
         contentInBase64: buffer.toString('base64'),
-        savedAt: new Date().toISOString()
+        savedAt: new Date().toISOString(),
+        source: 'generated'
       });
     }
 
@@ -184,11 +283,12 @@ const buildInlineArticleAttachment = async (
           .toLowerCase();
         const placeholderBuffer = Buffer.from(await placeholderResponse.arrayBuffer());
         if (placeholderBuffer.length > 0 && placeholderType.startsWith('image/')) {
-          if (isAiTitleImageUrl(imageUrl)) {
+          if (isAiImage) {
             await setCachedImagePayload(cacheKey, {
               contentType: placeholderType,
               contentInBase64: placeholderBuffer.toString('base64'),
-              savedAt: new Date().toISOString()
+              savedAt: new Date().toISOString(),
+              source: 'placeholder'
             });
           }
 

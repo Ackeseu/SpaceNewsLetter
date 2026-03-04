@@ -90,6 +90,15 @@ DB_SSL=true
 AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://...
 SENDER_EMAIL=donotreply@your-domain.com
 
+# Optional: AI title image generation (recommended for non-placeholder newsletter images)
+AI_IMAGE_PROVIDER=openai
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_IMAGE_MODEL=gpt-image-1
+
+# Optional: image cache tuning
+IMAGE_CACHE_TTL_HOURS=336
+IMAGE_CACHE_PLACEHOLDER_TTL_HOURS=6
+
 # Optional: NewsAPI
 NEWS_API_KEY=your-newsapi-key
 ```

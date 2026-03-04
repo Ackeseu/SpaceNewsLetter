@@ -55,9 +55,9 @@ const loadLogoBase64 = (): string => {
 
 const buildInlineArticleAttachment = async (
   imageUrl: string,
+  title: string,
   index: number,
-  cid: string,
-  logoFallbackBase64: string
+  cid: string
 ): Promise<EmailAttachment> => {
   try {
     const response = await fetch(imageUrl);
@@ -83,10 +83,32 @@ const buildInlineArticleAttachment = async (
       contentId: cid
     };
   } catch {
+    try {
+      const placeholderUrl = buildTitleReferenceImage(title);
+      const placeholderResponse = await fetch(placeholderUrl);
+      if (placeholderResponse.ok) {
+        const placeholderType = (placeholderResponse.headers.get('content-type') || 'image/png')
+          .split(';')[0]
+          .trim()
+          .toLowerCase();
+        const placeholderBuffer = Buffer.from(await placeholderResponse.arrayBuffer());
+        if (placeholderBuffer.length > 0 && placeholderType.startsWith('image/')) {
+          return {
+            name: `article-${index + 1}-placeholder.${getContentTypeExtension(placeholderType)}`,
+            contentType: placeholderType,
+            contentInBase64: placeholderBuffer.toString('base64'),
+            contentId: cid
+          };
+        }
+      }
+    } catch {
+      // fall through to tiny pixel fallback
+    }
+
     return {
       name: `article-${index + 1}-fallback.png`,
       contentType: 'image/png',
-      contentInBase64: logoFallbackBase64,
+      contentInBase64: TRANSPARENT_PIXEL_BASE64,
       contentId: cid
     };
   }
@@ -174,7 +196,12 @@ export const sendNewsletterEmail = async (
     articles.map(async (article, index) => {
       const cid = `article-image-${index + 1}`;
       const imageUrl = article.imageUrl || buildTitleReferenceImage(article.title || 'Space update');
-      const attachment = await buildInlineArticleAttachment(imageUrl, index, cid, logoBase64);
+      const attachment = await buildInlineArticleAttachment(
+        imageUrl,
+        article.title || 'Space update',
+        index,
+        cid
+      );
 
       return {
         article,

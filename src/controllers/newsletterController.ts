@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import Article from '../models/Article';
 import Subscriber from '../models/Subscriber';
-import { sendNewsletterEmail } from '../services/emailService';
+import { sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
@@ -49,6 +49,18 @@ const requireAdminToken = (req: Request, res: Response): boolean => {
   const providedToken = req.header('x-admin-token') || req.query.token;
 
   if (adminToken && providedToken !== adminToken) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+
+  return true;
+};
+
+const requireMonitorToken = (req: Request, res: Response): boolean => {
+  const monitorToken = process.env.MONITOR_TOKEN || process.env.NEWSLETTER_SENDER_TOKEN;
+  const providedToken = req.header('x-monitor-token') || req.query.token;
+
+  if (!monitorToken || providedToken !== monitorToken) {
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
@@ -399,5 +411,121 @@ export const deleteNewsSource = async (req: Request, res: Response): Promise<voi
   } catch (error) {
     console.error('Delete news source error:', error);
     res.status(500).json({ error: 'Failed to delete news source' });
+  }
+};
+
+export const getPipelineStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireMonitorToken(req, res)) {
+      return;
+    }
+
+    const staleThresholdMinutes = Number(process.env.MONITOR_MAX_STALE_MINUTES || 720);
+    const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const latestArticle = await Article.findOne({
+      order: [['createdAt', 'DESC']]
+    });
+
+    const latestCreatedAt = latestArticle?.createdAt ? new Date(latestArticle.createdAt) : null;
+    const minutesSinceLatestArticle = latestCreatedAt
+      ? Math.floor((Date.now() - latestCreatedAt.getTime()) / (1000 * 60))
+      : null;
+
+    const [articlesLast24h, verifiedActive, dailySubscribers, weeklySubscribers] = await Promise.all([
+      Article.count({ where: { createdAt: { [Op.gte]: last24Hours } } }),
+      Subscriber.count({ where: { isVerified: true, isActive: true } }),
+      Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'daily' } }),
+      Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'weekly' } })
+    ]);
+
+    const healthy =
+      latestCreatedAt !== null &&
+      minutesSinceLatestArticle !== null &&
+      minutesSinceLatestArticle <= staleThresholdMinutes;
+
+    res.status(200).json({
+      healthy,
+      staleThresholdMinutes,
+      latestArticle: latestArticle
+        ? {
+            id: latestArticle.id,
+            source: latestArticle.source,
+            title: latestArticle.title,
+            createdAt: latestCreatedAt?.toISOString()
+          }
+        : null,
+      minutesSinceLatestArticle,
+      articlesLast24h,
+      subscribers: {
+        verifiedActive,
+        daily: dailySubscribers,
+        weekly: weeklySubscribers
+      },
+      checkedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Get pipeline status error:', error);
+    res.status(500).json({ error: 'Failed to fetch pipeline status' });
+  }
+};
+
+export const sendMonitorAlert = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireMonitorToken(req, res)) {
+      return;
+    }
+
+    const recipientsRaw = process.env.MONITOR_ALERT_EMAILS || process.env.ALERT_EMAIL || '';
+    const recipients = recipientsRaw
+      .split(',')
+      .map(email => email.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) {
+      res.status(400).json({ error: 'No monitor recipients configured (MONITOR_ALERT_EMAILS)' });
+      return;
+    }
+
+    const payload = req.body as {
+      subject?: string;
+      details?: string;
+      status?: Record<string, unknown>;
+    };
+
+    const subject = payload.subject || 'NewSpace Newsletter Monitor Alert';
+    const details = payload.details || 'Monitoring detected a pipeline issue.';
+    const statusJson = payload.status ? JSON.stringify(payload.status, null, 2) : 'No status payload provided';
+
+    const htmlContent = `
+      <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>${subject}</h2>
+          <p>${details}</p>
+          <pre style="background:#f4f4f4;padding:12px;border-radius:6px;overflow:auto;">${statusJson}</pre>
+          <p style="font-size:12px;color:#666;">Generated at ${new Date().toISOString()}</p>
+        </body>
+      </html>
+    `;
+
+    let sent = 0;
+    let failed = 0;
+    for (const email of recipients) {
+      const ok = await sendEmail({
+        to: email,
+        subject,
+        htmlContent
+      });
+      if (ok) {
+        sent += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    res.status(200).json({ sent, failed, recipients });
+  } catch (error) {
+    console.error('Send monitor alert error:', error);
+    res.status(500).json({ error: 'Failed to send monitor alert' });
   }
 };

@@ -7,6 +7,8 @@ import {
   sendTestNewsletter,
   aggregateNewsletterArticles,
   sendScheduledNewsletters,
+  getPipelineStatus,
+  sendMonitorAlert,
   listNewsSources,
   createNewsSource,
   deleteNewsSource
@@ -52,5 +54,9 @@ router.post('/aggregate', aggregateNewsletterArticles);
 
 // Azure Function: Send scheduled newsletters
 router.post('/send-scheduled', sendScheduledNewsletters);
+
+// Monitoring endpoints
+router.get('/monitor/status', getPipelineStatus);
+router.post('/monitor/alert', sendMonitorAlert);
 
 export default router;

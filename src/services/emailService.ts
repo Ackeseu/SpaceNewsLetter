@@ -3,9 +3,13 @@ import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
 import fetch from 'node-fetch';
+import crypto from 'crypto';
 
 const connectionString = process.env.AZURE_COMMUNICATION_CONNECTION_STRING || '';
 const senderEmail = process.env.SENDER_EMAIL || '';
+const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
+const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
+const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
 
 let emailClient: EmailClient | null = null;
 
@@ -31,6 +35,71 @@ interface EmailOptions {
 
 const TRANSPARENT_PIXEL_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Y5mQAAAAASUVORK5CYII=';
+
+type CachedImagePayload = {
+  contentType: string;
+  contentInBase64: string;
+  savedAt: string;
+};
+
+const isAiTitleImageUrl = (imageUrl: string): boolean => /image\.pollinations\.ai\/prompt\//i.test(imageUrl);
+
+const getImageCacheKey = (title: string): string => {
+  const normalizedTitle = title.toLowerCase().trim();
+  return crypto.createHash('sha256').update(normalizedTitle).digest('hex').slice(0, 24);
+};
+
+const ensureImageCacheDir = async (): Promise<void> => {
+  if (!imageCacheEnabled) {
+    return;
+  }
+
+  await fs.promises.mkdir(imageCacheDir, { recursive: true });
+};
+
+const getCachedImagePayload = async (cacheKey: string): Promise<CachedImagePayload | null> => {
+  if (!imageCacheEnabled) {
+    return null;
+  }
+
+  try {
+    const cachePath = path.join(imageCacheDir, `${cacheKey}.json`);
+    const raw = await fs.promises.readFile(cachePath, 'utf-8');
+    const parsed = JSON.parse(raw) as CachedImagePayload;
+    const savedAt = new Date(parsed.savedAt).getTime();
+
+    if (Number.isNaN(savedAt)) {
+      return null;
+    }
+
+    const ageHours = (Date.now() - savedAt) / (1000 * 60 * 60);
+    if (ageHours > imageCacheTtlHours) {
+      return null;
+    }
+
+    if (!parsed.contentType || !parsed.contentInBase64) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const setCachedImagePayload = async (cacheKey: string, payload: CachedImagePayload): Promise<void> => {
+  if (!imageCacheEnabled) {
+    return;
+  }
+
+  try {
+    await ensureImageCacheDir();
+    const cachePath = path.join(imageCacheDir, `${cacheKey}.json`);
+    await fs.promises.writeFile(cachePath, JSON.stringify(payload), 'utf-8');
+  } catch {
+    // ignore cache write failures
+  }
+};
 
 const getContentTypeExtension = (contentType: string): string => {
   if (contentType.includes('png')) return 'png';
@@ -59,6 +128,20 @@ const buildInlineArticleAttachment = async (
   index: number,
   cid: string
 ): Promise<EmailAttachment> => {
+  const cacheKey = getImageCacheKey(title);
+
+  if (isAiTitleImageUrl(imageUrl)) {
+    const cachedPayload = await getCachedImagePayload(cacheKey);
+    if (cachedPayload) {
+      return {
+        name: `article-${index + 1}.${getContentTypeExtension(cachedPayload.contentType)}`,
+        contentType: cachedPayload.contentType,
+        contentInBase64: cachedPayload.contentInBase64,
+        contentId: cid
+      };
+    }
+  }
+
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) {
@@ -74,6 +157,14 @@ const buildInlineArticleAttachment = async (
     const buffer = Buffer.from(await response.arrayBuffer());
     if (!buffer.length) {
       throw new Error('Downloaded image is empty');
+    }
+
+    if (isAiTitleImageUrl(imageUrl)) {
+      await setCachedImagePayload(cacheKey, {
+        contentType,
+        contentInBase64: buffer.toString('base64'),
+        savedAt: new Date().toISOString()
+      });
     }
 
     return {
@@ -93,6 +184,14 @@ const buildInlineArticleAttachment = async (
           .toLowerCase();
         const placeholderBuffer = Buffer.from(await placeholderResponse.arrayBuffer());
         if (placeholderBuffer.length > 0 && placeholderType.startsWith('image/')) {
+          if (isAiTitleImageUrl(imageUrl)) {
+            await setCachedImagePayload(cacheKey, {
+              contentType: placeholderType,
+              contentInBase64: placeholderBuffer.toString('base64'),
+              savedAt: new Date().toISOString()
+            });
+          }
+
           return {
             name: `article-${index + 1}-placeholder.${getContentTypeExtension(placeholderType)}`,
             contentType: placeholderType,

@@ -1,9 +1,33 @@
-import { EmailAttachment, EmailClient, EmailMessage } from '@azure/communication-email';
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
 import fetch from 'node-fetch';
 import crypto from 'crypto';
+
+type EmailAttachment = {
+  name: string;
+  contentType: string;
+  contentInBase64: string;
+  contentId?: string;
+};
+
+type EmailMessage = {
+  senderAddress: string;
+  content: {
+    subject: string;
+    html: string;
+  };
+  recipients: {
+    to: Array<{ address: string }>;
+  };
+  attachments?: EmailAttachment[];
+};
+
+type EmailClientLike = {
+  beginSend: (message: EmailMessage) => Promise<{
+    pollUntilDone: () => Promise<{ id?: string }>;
+  }>;
+};
 
 const connectionString = process.env.AZURE_COMMUNICATION_CONNECTION_STRING || '';
 const senderEmail = process.env.SENDER_EMAIL || '';
@@ -15,10 +39,18 @@ const aiImageProvider = (process.env.AI_IMAGE_PROVIDER || 'pollinations').toLowe
 const openAiApiKey = process.env.OPENAI_API_KEY || '';
 const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
 
-let emailClient: EmailClient | null = null;
+let emailClient: EmailClientLike | null = null;
 
 if (connectionString) {
-  emailClient = new EmailClient(connectionString);
+  try {
+    // Lazy runtime load prevents hard startup failure if the SDK is unavailable at boot.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { EmailClient } = require('@azure/communication-email') as { EmailClient: new (value: string) => EmailClientLike };
+    emailClient = new EmailClient(connectionString);
+  } catch (error) {
+    console.error('Email SDK unavailable:', error instanceof Error ? error.message : String(error));
+    emailClient = null;
+  }
 }
 
 const buildTitleReferenceImage = (title: string): string => {

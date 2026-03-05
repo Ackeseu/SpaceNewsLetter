@@ -344,6 +344,13 @@ az webapp log tail --name newspace-newsletter-api --resource-group newspace-news
 - [ ] Add webhook support for external integrations
 - [ ] Expand recommendation/personalization logic
 
+## Operational Changelog
+
+- **2026-03-05**: Added recipient-level newsletter delivery logging (`newsletter_delivery_logs`) and monitor query endpoint: `/api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD`.
+- **2026-03-05**: Suspended title-based generated imagery by default via `TITLE_IMAGE_GENERATION_ENABLED=false`.
+- **2026-03-05**: Updated Azure App Service runtime guidance to use startup command `npm start` for prebuilt package deployments.
+- **2026-03-05**: Refreshed deployment docs and monitoring guidance in `README.md`, `DEPLOYMENT.md`, and `DEPLOYMENT-OPTIONS.md`.
+
 ## Contributing
 
 1. Fork the repository

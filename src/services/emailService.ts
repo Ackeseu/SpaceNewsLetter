@@ -206,7 +206,7 @@ const buildLocalThemedSvg = (title: string): string => {
 const buildLocalThemedAttachment = (title: string, index: number, cid: string): EmailAttachment => {
   const svg = buildLocalThemedSvg(title || 'Space Update');
   return {
-    name: `article-${index + 1}.png`,
+    name: `article-${index + 1}.svg`,
     contentType: 'image/svg+xml',
     contentInBase64: Buffer.from(svg).toString('base64'),
     contentId: cid
@@ -307,6 +307,7 @@ const getContentTypeExtension = (contentType: string): string => {
   if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg';
   if (contentType.includes('gif')) return 'gif';
   if (contentType.includes('webp')) return 'webp';
+  if (contentType.includes('svg')) return 'svg';
   return 'img';
 };
 
@@ -335,7 +336,7 @@ const buildInlineArticleAttachment = async (
 
   if (isLocalThemedImage) {
     const cachedPayload = await getCachedImagePayload(cacheKey);
-    if (cachedPayload) {
+    if (cachedPayload && cachedPayload.source === 'local-generated') {
       return {
         name: `article-${index + 1}.${getContentTypeExtension(cachedPayload.contentType)}`,
         contentType: cachedPayload.contentType,

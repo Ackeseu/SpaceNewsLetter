@@ -74,8 +74,16 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
+            ZIP_PATH=$(find artifacts -type f -name 'release.zip' | head -n 1)
+            if [ -z "$ZIP_PATH" ]; then
+              echo "release.zip not found under artifacts"
+              find artifacts -maxdepth 4 -type f
+              exit 1
+            fi
+
+            echo "Deploying package: $ZIP_PATH"
             az webapp deployment source config-zip \
               --resource-group newspace-newsletter-rg \
               --name newspace-newsletter-api \
-              --src artifacts/release.zip
+              --src "$ZIP_PATH"
           

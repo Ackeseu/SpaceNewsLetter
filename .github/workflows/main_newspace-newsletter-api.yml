@@ -74,6 +74,11 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
+            az webapp config appsettings set \
+              --resource-group newspace-newsletter-rg \
+              --name newspace-newsletter-api \
+              --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false
+
             ZIP_PATH=$(find artifacts -type f -name 'release.zip' | head -n 1)
             if [ -z "$ZIP_PATH" ]; then
               echo "release.zip not found under artifacts"

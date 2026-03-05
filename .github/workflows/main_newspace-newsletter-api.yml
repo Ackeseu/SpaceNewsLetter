@@ -37,6 +37,7 @@ jobs:
           mkdir -p release
           cp -R dist release/dist
           cp -R public release/public
+          cp -R node_modules release/node_modules
           cp package.json package-lock.json release/
           if [ -f web.config ]; then cp web.config release/; fi
           cd release
@@ -69,11 +70,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_DE46BC94503E44DC883D8334622D1D4B }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_5C957B894AEA465D89A2E62B7DAD9C9D }}
 
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
+      - name: Deploy ZIP via Azure CLI
+        uses: azure/cli@v2
         with:
-          app-name: 'newspace-newsletter-api'
-          slot-name: 'Production'
-          package: artifacts/release.zip
+          inlineScript: |
+            az webapp deployment source config-zip \
+              --resource-group newspace-newsletter-rg \
+              --name newspace-newsletter-api \
+              --src artifacts/release.zip
           

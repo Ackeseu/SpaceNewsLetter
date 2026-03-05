@@ -62,6 +62,13 @@ const buildTitleReferenceImage = (title: string): string => {
   return `https://placehold.co/640x360/1a2332/ffffff/png?text=${text}&font=roboto`;
 };
 
+const LOCAL_THEMED_IMAGE_PREFIX = 'local-themed://';
+
+const buildLocalThemedImageUrl = (title: string): string => {
+  const encoded = encodeURIComponent(title || 'Space Update');
+  return `${LOCAL_THEMED_IMAGE_PREFIX}${encoded}`;
+};
+
 interface EmailOptions {
   to: string;
   subject: string;
@@ -76,10 +83,12 @@ type CachedImagePayload = {
   contentType: string;
   contentInBase64: string;
   savedAt: string;
-  source?: 'generated' | 'placeholder';
+  source?: 'generated' | 'local-generated' | 'placeholder';
 };
 
 const isAiTitleImageUrl = (imageUrl: string): boolean => /image\.pollinations\.ai\/prompt\//i.test(imageUrl);
+
+const isLocalThemedImageUrl = (imageUrl?: string): boolean => !!imageUrl && imageUrl.startsWith(LOCAL_THEMED_IMAGE_PREFIX);
 
 const getImageCacheKey = (title: string): string => {
   const normalizedTitle = title.toLowerCase().trim();
@@ -110,8 +119,8 @@ const getCachedImagePayload = async (cacheKey: string): Promise<CachedImagePaylo
     }
 
     const ageHours = (Date.now() - savedAt) / (1000 * 60 * 60);
-    const source = parsed.source === 'generated' ? 'generated' : 'placeholder';
-    const ttlHours = source === 'generated' ? imageCacheTtlHours : imageCachePlaceholderTtlHours;
+    const source = parsed.source || 'placeholder';
+    const ttlHours = source === 'placeholder' ? imageCachePlaceholderTtlHours : imageCacheTtlHours;
 
     if (ageHours > ttlHours) {
       return null;
@@ -125,6 +134,83 @@ const getCachedImagePayload = async (cacheKey: string): Promise<CachedImagePaylo
   } catch {
     return null;
   }
+};
+
+const getThemeFromTitle = (title: string): { primary: string; accent: string; glow: string; motif: 'rocket' | 'satellite' | 'planet' | 'stars' } => {
+  const lower = title.toLowerCase();
+
+  if (/launch|rocket|booster|mission|liftoff/.test(lower)) {
+    return { primary: '#1b2a49', accent: '#ff8a3d', glow: '#ffd39a', motif: 'rocket' };
+  }
+
+  if (/satellite|orbit|constellation|payload|leo/.test(lower)) {
+    return { primary: '#12263a', accent: '#3db4ff', glow: '#95e1ff', motif: 'satellite' };
+  }
+
+  if (/moon|mars|planet|lunar|astro/.test(lower)) {
+    return { primary: '#1d2330', accent: '#b18cff', glow: '#d8c6ff', motif: 'planet' };
+  }
+
+  return { primary: '#142033', accent: '#4fd1c5', glow: '#9ff3ea', motif: 'stars' };
+};
+
+const buildLocalThemedSvg = (title: string): string => {
+  const seed = crypto.createHash('sha256').update(title.toLowerCase().trim()).digest('hex');
+  const theme = getThemeFromTitle(title);
+
+  const n = (index: number, max: number): number => parseInt(seed.slice(index, index + 2), 16) % max;
+
+  const stars = Array.from({ length: 18 }).map((_, i) => {
+    const x = n(i * 2, 640);
+    const y = n(i * 3 + 1, 360);
+    const r = (n(i * 5 + 2, 4) + 1) * 0.7;
+    return `<circle cx="${x}" cy="${y}" r="${r.toFixed(1)}" fill="${theme.glow}" opacity="0.55"/>`;
+  }).join('');
+
+  const motif = (() => {
+    if (theme.motif === 'rocket') {
+      return '<g transform="translate(470 170)"><path d="M0 60 L28 12 L56 60 Z" fill="#ffffff" opacity="0.92"/><rect x="22" y="60" width="12" height="34" rx="3" fill="#ffffff" opacity="0.92"/><path d="M16 94 L40 94 L28 124 Z" fill="#ffb37a"/></g>';
+    }
+
+    if (theme.motif === 'satellite') {
+      return '<g transform="translate(455 170)"><rect x="22" y="26" width="34" height="34" rx="4" fill="#ffffff" opacity="0.9"/><rect x="0" y="30" width="20" height="24" fill="#9fd8ff"/><rect x="58" y="30" width="20" height="24" fill="#9fd8ff"/><line x1="39" y1="26" x2="39" y2="8" stroke="#ffffff" stroke-width="3"/></g>';
+    }
+
+    if (theme.motif === 'planet') {
+      return '<g transform="translate(485 180)"><circle cx="0" cy="0" r="38" fill="#ffffff" opacity="0.9"/><ellipse cx="0" cy="2" rx="56" ry="14" fill="none" stroke="#ffffff" stroke-width="5" opacity="0.65"/></g>';
+    }
+
+    return '<g transform="translate(485 180)"><circle cx="0" cy="0" r="4" fill="#ffffff" opacity="0.95"/><circle cx="34" cy="-20" r="3" fill="#ffffff" opacity="0.9"/><circle cx="-30" cy="24" r="2.8" fill="#ffffff" opacity="0.88"/><circle cx="14" cy="30" r="2.5" fill="#ffffff" opacity="0.88"/></g>';
+  })();
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${theme.primary}"/>
+      <stop offset="100%" stop-color="#0b1020"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="20%" cy="20%" r="85%">
+      <stop offset="0%" stop-color="${theme.accent}" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="${theme.accent}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="120" cy="120" r="170" fill="url(#orb)"/>
+  <circle cx="560" cy="30" r="88" fill="${theme.accent}" opacity="0.12"/>
+  ${stars}
+  ${motif}
+</svg>`;
+};
+
+const buildLocalThemedAttachment = (title: string, index: number, cid: string): EmailAttachment => {
+  const svg = buildLocalThemedSvg(title || 'Space Update');
+  return {
+    name: `article-${index + 1}.png`,
+    contentType: 'image/svg+xml',
+    contentInBase64: Buffer.from(svg).toString('base64'),
+    contentId: cid
+  };
 };
 
 const setCachedImagePayload = async (cacheKey: string, payload: CachedImagePayload): Promise<void> => {
@@ -245,6 +331,29 @@ const buildInlineArticleAttachment = async (
 ): Promise<EmailAttachment> => {
   const cacheKey = getImageCacheKey(title);
   const isAiImage = isAiTitleImageUrl(imageUrl);
+  const isLocalThemedImage = isLocalThemedImageUrl(imageUrl);
+
+  if (isLocalThemedImage) {
+    const cachedPayload = await getCachedImagePayload(cacheKey);
+    if (cachedPayload) {
+      return {
+        name: `article-${index + 1}.${getContentTypeExtension(cachedPayload.contentType)}`,
+        contentType: cachedPayload.contentType,
+        contentInBase64: cachedPayload.contentInBase64,
+        contentId: cid
+      };
+    }
+
+    const localAttachment = buildLocalThemedAttachment(title, index, cid);
+    await setCachedImagePayload(cacheKey, {
+      contentType: localAttachment.contentType,
+      contentInBase64: localAttachment.contentInBase64,
+      savedAt: new Date().toISOString(),
+      source: 'local-generated'
+    });
+
+    return localAttachment;
+  }
 
   if (isAiImage) {
     const cachedPayload = await getCachedImagePayload(cacheKey);
@@ -426,7 +535,7 @@ export const sendNewsletterEmail = async (
   const articleWithImageCids = await Promise.all(
     articles.map(async (article, index) => {
       const cid = `article-image-${index + 1}`;
-      const imageUrl = article.imageUrl || buildTitleReferenceImage(article.title || 'Space update');
+      const imageUrl = article.imageUrl || buildLocalThemedImageUrl(article.title || 'Space update');
       const attachment = await buildInlineArticleAttachment(
         imageUrl,
         article.title || 'Space update',

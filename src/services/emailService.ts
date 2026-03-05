@@ -35,6 +35,7 @@ const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCas
 const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
 const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
 const imageCachePlaceholderTtlHours = Number(process.env.IMAGE_CACHE_PLACEHOLDER_TTL_HOURS || 6);
+const titleImageGenerationEnabled = (process.env.TITLE_IMAGE_GENERATION_ENABLED || 'false').toLowerCase() === 'true';
 const aiImageProvider = (process.env.AI_IMAGE_PROVIDER || 'pollinations').toLowerCase();
 const openAiApiKey = process.env.OPENAI_API_KEY || '';
 const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
@@ -536,7 +537,15 @@ export const sendNewsletterEmail = async (
   const articleWithImageCids = await Promise.all(
     articles.map(async (article, index) => {
       const cid = `article-image-${index + 1}`;
-      const imageUrl = article.imageUrl || buildLocalThemedImageUrl(article.title || 'Space update');
+      const rawImageUrl = article.imageUrl;
+      const shouldBypassGeneratedImage =
+        !titleImageGenerationEnabled &&
+        (!rawImageUrl || isAiTitleImageUrl(rawImageUrl) || isLocalThemedImageUrl(rawImageUrl));
+
+      const imageUrl = shouldBypassGeneratedImage
+        ? buildTitleReferenceImage(article.title || 'Space update')
+        : (rawImageUrl || buildLocalThemedImageUrl(article.title || 'Space update'));
+
       const attachment = await buildInlineArticleAttachment(
         imageUrl,
         article.title || 'Space update',

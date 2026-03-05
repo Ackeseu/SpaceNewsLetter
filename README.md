@@ -91,6 +91,7 @@ AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://...
 SENDER_EMAIL=donotreply@your-domain.com
 
 # Optional: AI title image generation (recommended for non-placeholder newsletter images)
+TITLE_IMAGE_GENERATION_ENABLED=false
 AI_IMAGE_PROVIDER=openai
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_IMAGE_MODEL=gpt-image-1

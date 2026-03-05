@@ -1,209 +1,95 @@
-# NewSpace Newsletter - Test Results & Deployment Guide
+# NewSpace Newsletter Deployment Runbook
 
-## ✅ Local Testing Results (February 4, 2026)
+## Current Production Targets
 
-### Infrastructure Status
-- ✓ Azure PostgreSQL Database: **Connected & Running**
-- ✓ Azure Communication Services: **Configured**
-- ✓ Express API Server: **Running on localhost:3000**
-- ✓ News Aggregation: **14 articles loaded from SpaceNews, NASA, ESA**
+- API App Service: `newspace-newsletter-api`
+- Function App: `newspacenewsletter-func`
+- Resource Group: `newspace-newsletter-rg`
+- Runtime: Node.js 20 LTS
 
-### API Endpoints Tested
-| Endpoint | Method | Status | Description |
-|----------|--------|--------|-------------|
-| `/` | GET | ✅ | Server status |
-| `/health` | GET | ✅ | Health check |
-| `/api/newsletters/articles` | GET | ✅ | Get articles (with filters) |
-| `/api/subscriptions/subscribe` | POST | ✅ | Subscribe to newsletter |
-| `/api/subscriptions/preferences/:id` | PUT | ✅ | Update preferences |
+## CI/CD (GitHub Actions)
 
-### Database Status
-- **Subscribers Table**: Created, 2 test subscribers added
-- **Articles Table**: Created, 14 articles from RSS feeds
-- **Schema Sync**: Completed successfully
+Workflow file: `.github/workflows/main_newspace-newsletter-api.yml`
 
----
+Current behavior:
+1. Install deps with `npm ci`
+2. Build TypeScript with `npm run build`
+3. Prune dev dependencies
+4. Package `dist`, `public`, `node_modules`, and package manifests
+5. Deploy ZIP via Azure CLI (`az webapp deployment source config-zip`)
 
-## 🚀 Next Steps: Azure Deployment
+## Required App Service Settings
 
-### Phase 1: Deploy API to Azure App Service
+Set in Azure App Service (`newspace-newsletter-api`):
+
+- `NODE_ENV=production`
+- `PORT=8080`
+- DB settings (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL`)
+- Email settings (`AZURE_COMMUNICATION_CONNECTION_STRING`, `SENDER_EMAIL`)
+- App URL (`APP_URL`)
+- Tokens:
+  - `ADMIN_TEST_TOKEN`
+  - `NEWS_AGGREGATOR_TOKEN`
+  - `NEWSLETTER_SENDER_TOKEN`
+  - `MONITOR_TOKEN`
+  - `MONITOR_ALERT_EMAILS`
+- Image settings (optional):
+  - `TITLE_IMAGE_GENERATION_ENABLED`
+  - `AI_IMAGE_PROVIDER`
+  - `OPENAI_API_KEY`
+  - `OPENAI_IMAGE_MODEL`
+  - `IMAGE_CACHE_TTL_HOURS`
+  - `IMAGE_CACHE_PLACEHOLDER_TTL_HOURS`
+
+## Startup Command (Important)
+
+Set startup to:
 
 ```bash
-# 1. Create App Service Plan
-az appservice plan create \
-  --name newspace-newsletter-plan \
-  --resource-group newspace-newsletter-rg \
-  --sku B1 \
-  --is-linux
+npm start
+```
 
-# 2. Create Web App
-az webapp create \
-  --name newspace-newsletter-api \
-  --resource-group newspace-newsletter-rg \
-  --plan newspace-newsletter-plan \
-  --runtime "NODE:18-lts"
+Do **not** use `npm run build && npm start` for the prebuilt package deploy path.
 
-# 3. Configure environment variables
-az webapp config appsettings set \
-  --name newspace-newsletter-api \
-  --resource-group newspace-newsletter-rg \
-  --settings \
-    NODE_ENV=production \
-    PORT=8080 \
-    DB_HOST=newspace-newsletter-db.postgres.database.azure.com \
-    DB_PORT=5432 \
-    DB_NAME=newsletter_db \
-    DB_USER=adminuser \
-    DB_PASSWORD=YOUR_DB_PASSWORD \
-    DB_SSL=true \
-    AZURE_COMMUNICATION_CONNECTION_STRING="endpoint=https://newspace-newsletter-acs.unitedstates.communication.azure.com/;accesskey=YOUR_ACS_ACCESS_KEY" \
-    SENDER_EMAIL=DoNotReply@newspace-newsletter-acs.azurecomm.net \
-    APP_URL=https://newspace-newsletter-api.azurewebsites.net
+## Manual Recovery Deploy (if CI is blocked)
 
-# 4. Deploy code
-zip -r deploy.zip . -x "node_modules/*" -x ".git/*" -x "test-*.ts" -x "*.log"
+```bash
+cd repo
+git archive -o /tmp/newspace-recover.zip HEAD
 az webapp deployment source config-zip \
-  --name newspace-newsletter-api \
   --resource-group newspace-newsletter-rg \
-  --src deploy.zip
+  --name newspace-newsletter-api \
+  --src /tmp/newspace-recover.zip
 ```
 
-### Phase 2: Deploy Azure Functions (Automation)
+Then verify:
 
 ```bash
-cd azure-functions
-
-# 1. Install dependencies
-npm install
-
-# 2. Create Function App
-az functionapp create \
-  --name newspace-newsletter-functions \
-  --resource-group newspace-newsletter-rg \
-  --consumption-plan-location centralus \
-  --runtime node \
-  --runtime-version 18 \
-  --functions-version 4 \
-  --storage-account newspacestorage
-
-# 3. Deploy functions
-func azure functionapp publish newspace-newsletter-functions
-
-# 4. Configure function app settings
-az functionapp config appsettings set \
-  --name newspace-newsletter-functions \
-  --resource-group newspace-newsletter-rg \
-  --settings \
-    DB_HOST=newspace-newsletter-db.postgres.database.azure.com \
-    DB_NAME=newsletter_db \
-    DB_USER=adminuser \
-    DB_PASSWORD=NewsSpace2026Pass \
-    AZURE_COMMUNICATION_CONNECTION_STRING="<connection-string>" \
-    API_URL=https://newspace-newsletter-api.azurewebsites.net
+curl -sS https://newspace-newsletter-api.azurewebsites.net/health
+curl -sS -I https://newspace-newsletter-api.azurewebsites.net/admin.html
 ```
 
-### Phase 3: Configure Email Domain
+## Monitoring Endpoints
 
-1. Go to Azure Portal → Azure Communication Services
-2. Add Email Domain:
-   - Use Azure Managed Domain (for testing)
-   - Or connect custom domain (for production)
-3. Verify domain ownership
-4. Update `SENDER_EMAIL` in app settings
+All require `x-monitor-token`.
 
----
+- `GET /api/newsletters/monitor/status`
+- `POST /api/newsletters/monitor/alert`
+- `GET /api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD`
 
-## 📊 Current Architecture
+## Function Endpoints (called by Function App)
 
-```
-┌─────────────────────┐
-│   Client/User       │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   Express API       │ ◄── You are here (Local)
-│  (App Service)      │
-└──────────┬──────────┘
-           │
-           ├──► Azure PostgreSQL (Connected ✓)
-           ├──► Azure Communication Services (Ready ✓)
-           └──► RSS Feeds (SpaceNews, NASA, ESA) (Working ✓)
+- `POST /api/newsletters/aggregate` with `x-aggregator-token`
+- `POST /api/newsletters/send-scheduled` with `x-sender-token`
 
-┌─────────────────────┐
-│  Azure Functions    │ ◄── To be deployed
-│  (Scheduled Jobs)   │
-└─────────────────────┘
-  │
-  ├──► NewsAggregator (Every 6 hours)
-  └──► SendNewsletter (Weekly)
-```
+## Operational Checks
 
----
+- API health: `GET /health`
+- Admin UI: `GET /admin.html`
+- Monitor status: `GET /api/newsletters/monitor/status`
+- Test send (admin token): `POST /api/newsletters/send-test`
 
-## 🎯 Immediate Action Items
+## Notes
 
-### Before Deployment
-- [x] Test database connection
-- [x] Test API endpoints
-- [x] Test news aggregation
-- [ ] Test email sending (optional)
-- [ ] Add NewsAPI key for additional sources (optional)
-
-### During Deployment
-- [ ] Deploy to Azure App Service
-- [ ] Test production API
-- [ ] Deploy Azure Functions
-- [ ] Test scheduled tasks
-
-### After Deployment
-- [ ] Set up monitoring (Application Insights)
-- [ ] Configure custom domain (optional)
-- [ ] Set up CI/CD pipeline (GitHub Actions)
-- [ ] Add rate limiting
-- [ ] Implement caching
-
----
-
-## 🔗 Useful Commands
-
-```bash
-# Check running processes
-ps aux | grep node
-
-# View server logs (local)
-tail -f logs/server.log
-
-# Test API locally
-curl http://localhost:3000/health
-
-# Run news aggregation manually
-npx ts-node test-news.ts
-
-# View Azure logs
-az webapp log tail \
-  --name newspace-newsletter-api \
-  --resource-group newspace-newsletter-rg
-
-# Restart Azure App Service
-az webapp restart \
-  --name newspace-newsletter-api \
-  --resource-group newspace-newsletter-rg
-```
-
----
-
-## 📝 Notes
-
-- **Database**: Azure PostgreSQL Flexible Server (Burstable B1ms)
-- **Region**: Central US
-- **Cost Estimate**: ~$15-30/month (with minimal usage)
-- **SSL**: Enabled for database connection
-- **Authentication**: Email verification tokens
-- **Newsletter Frequency**: Daily, Weekly, Monthly (user preference)
-
----
-
-## ✅ Ready for Deployment!
-
-All local tests passed. The system is ready to be deployed to Azure App Service.
+- Database schema sync is controlled by `ALTER_DB` (or development mode).
+- Recipient-level delivery logging is stored in `newsletter_delivery_logs` and queried via monitor deliveries endpoint.

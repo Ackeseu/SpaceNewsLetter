@@ -90,7 +90,8 @@ DB_SSL=true
 AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://...
 SENDER_EMAIL=donotreply@your-domain.com
 
-# Optional: AI title image generation (recommended for non-placeholder newsletter images)
+# Optional: title image generation
+# Set false to suspend generated title imagery in newsletters
 TITLE_IMAGE_GENERATION_ENABLED=false
 AI_IMAGE_PROVIDER=openai
 OPENAI_API_KEY=your-openai-api-key
@@ -99,6 +100,13 @@ OPENAI_IMAGE_MODEL=gpt-image-1
 # Optional: image cache tuning
 IMAGE_CACHE_TTL_HOURS=336
 IMAGE_CACHE_PLACEHOLDER_TTL_HOURS=6
+
+# Admin & monitor tokens
+ADMIN_TEST_TOKEN=your-admin-token
+NEWS_AGGREGATOR_TOKEN=your-aggregator-token
+NEWSLETTER_SENDER_TOKEN=your-sender-token
+MONITOR_TOKEN=your-monitor-token
+MONITOR_ALERT_EMAILS=ops@example.com,owner@example.com
 
 # Optional: NewsAPI
 NEWS_API_KEY=your-newsapi-key
@@ -187,6 +195,18 @@ The API will be available at `http://localhost:3000`.
   - Query params: `limit`, `offset`, `source`, `category`
 - `GET /api/newsletters/articles/featured` - Get featured articles
 - `GET /api/newsletters/articles/:id` - Get specific article
+- `POST /api/newsletters/send-test` - Send test newsletter (requires `x-admin-token`)
+- `POST /api/newsletters/aggregate` - Trigger aggregation (requires `x-aggregator-token`)
+- `POST /api/newsletters/send-scheduled` - Trigger scheduled send (requires `x-sender-token`)
+- `GET /api/newsletters/sources` - List news sources (requires admin token)
+- `POST /api/newsletters/sources` - Create news source (requires admin token)
+- `DELETE /api/newsletters/sources/:id` - Delete news source (requires admin token)
+
+### Monitoring
+
+- `GET /api/newsletters/monitor/status` - Pipeline health/status (requires `x-monitor-token`)
+- `POST /api/newsletters/monitor/alert` - Send monitor alert email (requires `x-monitor-token`)
+- `GET /api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD` - Recipient delivery logs (requires `x-monitor-token`)
 
 ### Health Check
 
@@ -209,20 +229,26 @@ az appservice plan create \
 
 # Create Web App
 az webapp create \
-  --name newspace-newsletter \
+  --name newspace-newsletter-api \
   --resource-group newspace-newsletter-rg \
   --plan newspace-newsletter-plan \
-  --runtime "NODE:18-lts"
+  --runtime "NODE:20-lts"
 
 # Configure environment variables
 az webapp config appsettings set \
-  --name newspace-newsletter \
+  --name newspace-newsletter-api \
   --resource-group newspace-newsletter-rg \
   --settings @appsettings.json
 
+# Set startup command (prebuilt package runtime)
+az webapp config set \
+  --name newspace-newsletter-api \
+  --resource-group newspace-newsletter-rg \
+  --startup-file "npm start"
+
 # Deploy code
 az webapp deployment source config-zip \
-  --name newspace-newsletter \
+  --name newspace-newsletter-api \
   --resource-group newspace-newsletter-rg \
   --src deploy.zip
 ```
@@ -271,31 +297,32 @@ az functionapp create \
 func azure functionapp publish newspace-newsletter-functions
 ```
 
-## Testing News Aggregation
+## Testing Aggregation/Sending
 
-To manually trigger news aggregation:
+Trigger aggregation (token protected):
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/aggregate-news
+curl -X POST http://localhost:3000/api/newsletters/aggregate \
+  -H "x-aggregator-token: <NEWS_AGGREGATOR_TOKEN>"
 ```
 
-Or run directly:
+Trigger scheduled send (token protected):
 
 ```bash
-npm run dev
-# In another terminal
-node -e "require('./dist/services/newsAggregator').aggregateNews()"
+curl -X POST http://localhost:3000/api/newsletters/send-scheduled \
+  -H "Content-Type: application/json" \
+  -H "x-sender-token: <NEWSLETTER_SENDER_TOKEN>" \
+  -d '{"frequency":"daily"}'
 ```
 
 ## Monitoring
 
-- **Application Insights**: Automatically integrated with Azure Functions
-- **Azure Monitor**: Monitor App Service metrics
-- **Logs**: Access via Azure Portal or CLI
+- Use `/api/newsletters/monitor/status` and `/api/newsletters/monitor/deliveries` for pipeline and recipient-level checks.
+- Use `/api/newsletters/monitor/alert` for token-protected alert emails.
+- For App Service runtime logs, use Azure CLI/Portal.
 
 ```bash
-# Stream logs
-az webapp log tail --name newspace-newsletter --resource-group newspace-newsletter-rg
+az webapp log tail --name newspace-newsletter-api --resource-group newspace-newsletter-rg
 ```
 
 ## Security Best Practices
@@ -311,16 +338,11 @@ az webapp log tail --name newspace-newsletter --resource-group newspace-newslett
 
 ## Next Steps / Enhancements
 
-- [ ] Add admin dashboard
 - [ ] Implement rate limiting
 - [ ] Add analytics tracking
-- [ ] Create email templates library
-- [ ] Add A/B testing for newsletters
-- [ ] Implement caching (Azure Redis)
-- [ ] Add webhook support
-- [ ] Create React/Vue frontend
-- [ ] Add social media integration
-- [ ] Implement recommendation engine
+- [ ] Improve delivery telemetry dashboards
+- [ ] Add webhook support for external integrations
+- [ ] Expand recommendation/personalization logic
 
 ## Contributing
 

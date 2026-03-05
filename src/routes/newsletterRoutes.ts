@@ -9,6 +9,7 @@ import {
   sendScheduledNewsletters,
   getPipelineStatus,
   sendMonitorAlert,
+  getDeliveryStatusByEmail,
   listNewsSources,
   createNewsSource,
   deleteNewsSource
@@ -58,5 +59,6 @@ router.post('/send-scheduled', sendScheduledNewsletters);
 // Monitoring endpoints
 router.get('/monitor/status', getPipelineStatus);
 router.post('/monitor/alert', sendMonitorAlert);
+router.get('/monitor/deliveries', getDeliveryStatusByEmail);
 
 export default router;

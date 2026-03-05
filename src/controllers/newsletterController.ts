@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import Article from '../models/Article';
 import Subscriber from '../models/Subscriber';
+import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import { sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
 import { Op } from 'sequelize';
@@ -66,6 +67,29 @@ const requireMonitorToken = (req: Request, res: Response): boolean => {
   }
 
   return true;
+};
+
+const recordDeliveryAttempt = async (params: {
+  email: string;
+  triggerType: 'scheduled' | 'test';
+  frequency?: 'daily' | 'weekly' | 'monthly';
+  success: boolean;
+  errorMessage?: string;
+  articleCount: number;
+}): Promise<void> => {
+  try {
+    await NewsletterDeliveryLog.create({
+      email: params.email,
+      triggerType: params.triggerType,
+      frequency: params.frequency,
+      success: params.success,
+      errorMessage: params.errorMessage || null,
+      articleCount: params.articleCount,
+      deliveredAt: new Date()
+    });
+  } catch (error) {
+    console.error('Failed to record newsletter delivery attempt:', error);
+  }
 };
 
 export const getLatestArticles = async (req: Request, res: Response): Promise<void> => {
@@ -178,9 +202,25 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       preferencesToken
     );
     if (!emailSent) {
+      await recordDeliveryAttempt({
+        email: subscriber.email,
+        triggerType: 'test',
+        frequency: subscriber.frequency,
+        success: false,
+        errorMessage: 'Email service returned unsuccessful status',
+        articleCount: articles.length
+      });
       res.status(500).json({ error: 'Failed to send test newsletter' });
       return;
     }
+
+    await recordDeliveryAttempt({
+      email: subscriber.email,
+      triggerType: 'test',
+      frequency: subscriber.frequency,
+      success: true,
+      articleCount: articles.length
+    });
 
     res.status(200).json({ message: 'Test newsletter sent' });
   } catch (error) {
@@ -306,9 +346,24 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         );
         if (emailSent) {
           sent++;
+          await recordDeliveryAttempt({
+            email: subscriber.email,
+            triggerType: 'scheduled',
+            frequency: subscriber.frequency,
+            success: true,
+            articleCount: articles.length
+          });
         } else {
           failed++;
           console.error(`Failed to send newsletter to ${subscriber.email}`);
+          await recordDeliveryAttempt({
+            email: subscriber.email,
+            triggerType: 'scheduled',
+            frequency: subscriber.frequency,
+            success: false,
+            errorMessage: 'Email service returned unsuccessful status',
+            articleCount: articles.length
+          });
           failedRecipients.push({
             email: subscriber.email,
             reason: 'Email service returned unsuccessful status'
@@ -317,6 +372,14 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       } catch (error) {
         failed++;
         console.error(`Error sending newsletter to subscriber:`, error);
+        await recordDeliveryAttempt({
+          email: subscriber.email,
+          triggerType: 'scheduled',
+          frequency: subscriber.frequency,
+          success: false,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          articleCount: 0
+        });
         failedRecipients.push({
           email: subscriber.email,
           reason: error instanceof Error ? error.message : 'Unknown error'
@@ -329,6 +392,69 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Send scheduled newsletters error:', error);
     res.status(500).json({ error: 'Failed to send newsletters' });
+  }
+};
+
+export const getDeliveryStatusByEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireMonitorToken(req, res)) {
+      return;
+    }
+
+    const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+    const dateParam = typeof req.query.date === 'string' ? req.query.date.trim() : '';
+
+    if (!email) {
+      res.status(400).json({ error: 'Query parameter "email" is required' });
+      return;
+    }
+
+    if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      res.status(400).json({ error: 'Query parameter "date" must be YYYY-MM-DD' });
+      return;
+    }
+
+    const rangeStart = dateParam
+      ? new Date(`${dateParam}T00:00:00.000Z`)
+      : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    const rangeEnd = new Date(rangeStart);
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+    const deliveries = await NewsletterDeliveryLog.findAll({
+      where: {
+        email,
+        deliveredAt: {
+          [Op.gte]: rangeStart,
+          [Op.lt]: rangeEnd
+        }
+      },
+      order: [['deliveredAt', 'DESC']],
+      limit: 100
+    });
+
+    const successful = deliveries.filter(item => item.success).length;
+    const failed = deliveries.length - successful;
+
+    res.status(200).json({
+      email,
+      date: rangeStart.toISOString().slice(0, 10),
+      summary: {
+        total: deliveries.length,
+        successful,
+        failed
+      },
+      deliveries: deliveries.map(item => ({
+        triggerType: item.triggerType,
+        frequency: item.frequency,
+        success: item.success,
+        errorMessage: item.errorMessage,
+        articleCount: item.articleCount,
+        deliveredAt: item.deliveredAt
+      }))
+    });
+  } catch (error) {
+    console.error('Get delivery status by email error:', error);
+    res.status(500).json({ error: 'Failed to fetch delivery status' });
   }
 };
 

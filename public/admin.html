@@ -222,6 +222,56 @@
       color: #667eea;
     }
 
+    .changelog-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .changelog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .changelog-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1f2937;
+    }
+
+    .changelog-list {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+    }
+
+    .changelog-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #f8fafc;
+    }
+
+    .changelog-item-title {
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .changelog-item-meta {
+      font-size: 12px;
+      color: #64748b;
+    }
+
     .form-card {
       background: white;
       padding: 30px;
@@ -248,6 +298,358 @@
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       overflow: hidden;
+    }
+
+    .filter-bar {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr auto;
+      gap: 12px;
+      margin-bottom: 14px;
+      align-items: end;
+    }
+
+    .filter-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .secondary-btn {
+      width: auto;
+      padding: 10px 14px;
+      background: #eef2ff;
+      color: #364152;
+      border: 1px solid #c7d2fe;
+      font-size: 13px;
+    }
+
+    .secondary-btn:hover {
+      box-shadow: none;
+      transform: none;
+      background: #e0e7ff;
+    }
+
+    .source-test-btn {
+      background: #0f766e;
+      color: white;
+    }
+
+    .source-test-btn:hover {
+      background: #115e59;
+    }
+
+    .delivery-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .delivery-pill.good {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .delivery-pill.bad {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .delivery-meta {
+      font-size: 12px;
+      color: #475569;
+    }
+
+    .source-test-summary {
+      font-size: 13px;
+      color: #475569;
+      margin-bottom: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+
+    .source-test-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .source-test-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+
+    .source-test-item-title {
+      font-weight: 600;
+      color: #1f2937;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .source-test-item-meta {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .source-test-item-link {
+      font-size: 12px;
+      margin-top: 6px;
+      display: inline-block;
+      word-break: break-all;
+    }
+
+    .pagination-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+    }
+
+    .pagination-meta {
+      font-size: 13px;
+      color: #475569;
+    }
+
+    .pagination-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .pagination-btn {
+      width: auto;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    .monitor-panel {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .monitor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .monitor-header-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .monitor-last-updated {
+      font-size: 12px;
+      color: #6b7280;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .monitor-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .monitor-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fafafa;
+    }
+
+    .monitor-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .monitor-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1f2937;
+    }
+
+    .service-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .monitor-subsection-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 18px 0 10px;
+      color: #111827;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .impact-list {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .impact-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      gap: 12px;
+    }
+
+    .impact-item:last-child {
+      border-bottom: none;
+    }
+
+    .impact-email {
+      font-weight: 600;
+      color: #1f2937;
+      word-break: break-word;
+    }
+
+    .impact-time {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+
+    .impact-age {
+      font-size: 12px;
+      font-weight: 700;
+      margin-left: 8px;
+      color: #334155;
+    }
+
+    .impact-age.high {
+      color: #b91c1c;
+    }
+
+    .service-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .service-meta {
+      min-width: 0;
+    }
+
+    .service-name {
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+
+    .service-detail {
+      font-size: 13px;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 760px;
+    }
+
+    .status-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 78px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .status-dot.up {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+
+    .status-dot.down {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+
+    .monitor-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .monitor-table th,
+    .monitor-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .monitor-table th {
+      background: #f8fafc;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-size: 11px;
+    }
+
+    .domain-risk-row {
+      background: #fff1f2;
+    }
+
+    .domain-risk-row td {
+      border-bottom-color: #fecdd3;
+    }
+
+    .trend-up {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+
+    .trend-down {
+      color: #166534;
+      font-weight: 700;
+    }
+
+    .trend-flat {
+      color: #475569;
+      font-weight: 700;
     }
 
     table {
@@ -434,6 +836,31 @@
         grid-template-columns: 1fr;
       }
 
+      .filter-bar {
+        grid-template-columns: 1fr;
+      }
+
+      .filter-actions {
+        justify-content: stretch;
+      }
+
+      .secondary-btn {
+        width: 100%;
+      }
+
+      .pagination-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .pagination-actions {
+        justify-content: stretch;
+      }
+
+      .pagination-btn {
+        width: 100%;
+      }
+
       table {
         font-size: 13px;
       }
@@ -484,18 +911,71 @@
       <!-- Stats -->
       <div class="stats-grid" id="statsGrid"></div>
 
+      <div class="changelog-card">
+        <div class="changelog-header">
+          <div class="changelog-title">Admin Changelog</div>
+          <div class="pagination-meta" id="adminChangelogUpdatedAt">Updated just now</div>
+        </div>
+        <ul class="changelog-list" id="adminChangelogList"></ul>
+      </div>
+
       <!-- Tabs -->
       <div class="tabs">
         <button class="tab-btn active" data-tab="subscribers">Subscribers</button>
         <button class="tab-btn" data-tab="add">Add Subscriber</button>
         <button class="tab-btn" data-tab="preferences">Edit Preferences</button>
         <button class="tab-btn" data-tab="sources">Sources</button>
+        <button class="tab-btn" data-tab="monitor">Monitoring</button>
       </div>
 
       <!-- Subscribers Tab -->
       <div id="subscribers" class="tab-content active">
+        <div class="form-card" style="padding: 18px; margin-bottom: 16px;">
+          <div class="filter-bar">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="subscriberSearch">Search</label>
+              <input type="text" id="subscriberSearch" placeholder="Email or name">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="subscriberStatusFilter">Status</label>
+              <select id="subscriberStatusFilter">
+                <option value="all">All</option>
+                <option value="verified">Verified</option>
+                <option value="pending">Pending</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="subscriberFrequencyFilter">Frequency</label>
+              <select id="subscriberFrequencyFilter">
+                <option value="all">All</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="subscriberDeliveryRiskFilter">Delivery Risk</label>
+              <select id="subscriberDeliveryRiskFilter">
+                <option value="all">All</option>
+                <option value="at-risk">At risk (2+ failures)</option>
+                <option value="healthy">Healthy / unknown</option>
+              </select>
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="subscriberFiltersReset" class="secondary-btn">Reset Filters</button>
+            </div>
+          </div>
+        </div>
         <div class="subscribers-table" id="subscribersTable">
           <div class="loading"><span class="spinner"></span>Loading subscribers...</div>
+        </div>
+        <div class="pagination-bar" id="subscribersPagination" style="display:none;">
+          <div class="pagination-meta" id="subscribersPaginationMeta"></div>
+          <div class="pagination-actions">
+            <button type="button" class="secondary-btn pagination-btn" id="subscribersPrevPage">Previous</button>
+            <button type="button" class="secondary-btn pagination-btn" id="subscribersNextPage">Next</button>
+          </div>
         </div>
       </div>
 
@@ -679,6 +1159,50 @@
           <div class="loading"><span class="spinner"></span>Loading sources...</div>
         </div>
       </div>
+
+      <!-- Monitoring Tab -->
+      <div id="monitor" class="tab-content">
+        <div class="monitor-panel">
+          <div class="monitor-header">
+            <h2>System & Workflow Status</h2>
+            <div class="monitor-header-meta">
+              <span id="monitorLastUpdated" class="monitor-last-updated">Last updated: --</span>
+              <button type="button" id="refreshMonitorBtn" style="width:auto;padding:10px 14px;">Refresh Status</button>
+            </div>
+          </div>
+
+          <div class="monitor-summary" id="monitorSummary">
+            <div class="monitor-card">
+              <div class="monitor-label">Overall</div>
+              <div class="monitor-value">Checking...</div>
+            </div>
+          </div>
+
+          <div class="service-list" id="monitorServices">
+            <div class="loading"><span class="spinner"></span>Loading monitor data...</div>
+          </div>
+
+          <div class="monitor-subsection-title">Real Daily Recipients Without Recent Success</div>
+          <div class="impact-list" id="monitorImpactedRecipients">
+            <div class="loading"><span class="spinner"></span>Checking impacted recipients...</div>
+          </div>
+
+          <div class="monitor-subsection-title">Scheduled Run Timeline (Daily/Weekly)</div>
+          <div id="monitorRunTimeline">
+            <div class="loading"><span class="spinner"></span>Loading run timeline...</div>
+          </div>
+
+          <div class="monitor-subsection-title">Top Failure Reasons (24h vs Prev 24h)</div>
+          <div id="monitorFailureTrends">
+            <div class="loading"><span class="spinner"></span>Loading failure trends...</div>
+          </div>
+
+          <div class="monitor-subsection-title">Domain Health (24h, Scoped)</div>
+          <div id="monitorDomainHealth">
+            <div class="loading"><span class="spinner"></span>Loading domain health...</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -707,6 +1231,15 @@
         <button type="submit">Save Changes</button>
         <button type="button" id="editPrefsBtn" style="margin-top: 10px;">Edit Preferences</button>
       </form>
+    </div>
+  </div>
+
+  <div class="modal" id="sourceTestModal">
+    <div class="modal-content" style="position: relative;">
+      <button class="modal-close" id="closeSourceTestModal">&times;</button>
+      <div class="modal-header" id="sourceTestModalTitle">Source Test Result</div>
+      <div class="source-test-summary" id="sourceTestSummary">No result yet.</div>
+      <ul class="source-test-list" id="sourceTestList"></ul>
     </div>
   </div>
 

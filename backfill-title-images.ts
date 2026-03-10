@@ -10,7 +10,8 @@ const AI_TITLE_IMAGES_ENABLED = (process.env.AI_TITLE_IMAGES_ENABLED || 'true').
 
 const buildAiTitleImageUrl = (title: string): string => {
   const cleaned = title.replace(/\s+/g, ' ').trim() || 'Space Update';
-  const prompt = 'space news illustration cinematic no text no logos';
+  const clippedTitle = cleaned.slice(0, 140);
+  const prompt = `space news illustration cinematic inspired by: ${clippedTitle}, no text, no logos`;
   const seed = crypto.createHash('sha256').update(cleaned.toLowerCase()).digest('hex').slice(0, 12);
   const encodedPrompt = encodeURIComponent(prompt);
   return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=640&height=360&nologo=true&seed=${seed}`;

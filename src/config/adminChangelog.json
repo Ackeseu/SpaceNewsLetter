@@ -1,0 +1,17 @@
+[
+  {
+    "date": "2026-03-10",
+    "title": "Subscriber search, filters, and pagination moved server-side",
+    "detail": "Improves performance for larger subscriber lists and keeps filter state queryable."
+  },
+  {
+    "date": "2026-03-10",
+    "title": "Source feed test action added",
+    "detail": "Sources tab can now validate RSS fetch/parse and show sampled headlines."
+  },
+  {
+    "date": "2026-03-10",
+    "title": "Monitoring received freshness and reliability updates",
+    "detail": "Includes last-updated ticker and improved bottom-section rendering flow."
+  }
+]

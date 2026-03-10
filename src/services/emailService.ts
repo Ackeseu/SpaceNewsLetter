@@ -39,6 +39,15 @@ const titleImageGenerationEnabled = (process.env.TITLE_IMAGE_GENERATION_ENABLED 
 const aiImageProvider = (process.env.AI_IMAGE_PROVIDER || 'pollinations').toLowerCase();
 const openAiApiKey = process.env.OPENAI_API_KEY || '';
 const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const huggingFaceApiKey = process.env.HUGGINGFACE_API_KEY || '';
+const huggingFaceImageModel = process.env.HUGGINGFACE_IMAGE_MODEL || 'black-forest-labs/FLUX.1-dev';
+const huggingFaceImageEndpoint = process.env.HUGGINGFACE_IMAGE_ENDPOINT || '';
+const emailSendTimeoutMs = Number(process.env.EMAIL_SEND_TIMEOUT_MS || 180000);
+const emailBeginSendTimeoutMs = Number(process.env.EMAIL_BEGIN_SEND_TIMEOUT_MS || 60000);
+const imageFetchTimeoutMs = Number(process.env.IMAGE_FETCH_TIMEOUT_MS || 10000);
+const aiImageGenerationTimeoutMs = Number(process.env.AI_IMAGE_GENERATION_TIMEOUT_MS || 12000);
+
+const lastEmailErrorByRecipient = new Map<string, string>();
 
 let emailClient: EmailClientLike | null = null;
 
@@ -77,6 +86,45 @@ interface EmailOptions {
   attachments?: EmailAttachment[];
 }
 
+const wait = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const fetchWithTimeout = async (
+  url: string,
+  init?: Parameters<typeof fetch>[1],
+  timeoutMs = imageFetchTimeoutMs
+): Promise<Awaited<ReturnType<typeof fetch>>> => {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...(init || {}),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+};
+
+const normalizeRecipientKey = (email: string): string => email.trim().toLowerCase();
+
+const rememberEmailSendError = (recipient: string, message: string): void => {
+  lastEmailErrorByRecipient.set(normalizeRecipientKey(recipient), message);
+};
+
+const clearEmailSendError = (recipient: string): void => {
+  lastEmailErrorByRecipient.delete(normalizeRecipientKey(recipient));
+};
+
+export const consumeLastEmailSendError = (recipient: string): string | undefined => {
+  const key = normalizeRecipientKey(recipient);
+  const message = lastEmailErrorByRecipient.get(key);
+  lastEmailErrorByRecipient.delete(key);
+  return message;
+};
+
 const TRANSPARENT_PIXEL_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Y5mQAAAAASUVORK5CYII=';
 
@@ -90,6 +138,18 @@ type CachedImagePayload = {
 const isAiTitleImageUrl = (imageUrl: string): boolean => /image\.pollinations\.ai\/prompt\//i.test(imageUrl);
 
 const isLocalThemedImageUrl = (imageUrl?: string): boolean => !!imageUrl && imageUrl.startsWith(LOCAL_THEMED_IMAGE_PREFIX);
+
+const isRenderableSourceImageUrl = (imageUrl?: string): boolean => {
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+    return false;
+  }
+
+  if (isAiTitleImageUrl(imageUrl) || isLocalThemedImageUrl(imageUrl)) {
+    return false;
+  }
+
+  return true;
+};
 
 const getImageCacheKey = (title: string): string => {
   const normalizedTitle = title.toLowerCase().trim();
@@ -240,7 +300,7 @@ const tryGenerateOpenAiTitleImage = async (title: string): Promise<CachedImagePa
 
   try {
     const prompt = buildImageGenerationPrompt(title);
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${openAiApiKey}`,
@@ -251,7 +311,7 @@ const tryGenerateOpenAiTitleImage = async (title: string): Promise<CachedImagePa
         prompt,
         size: '1024x1024'
       })
-    });
+    }, aiImageGenerationTimeoutMs);
 
     if (!response.ok) {
       return null;
@@ -275,7 +335,7 @@ const tryGenerateOpenAiTitleImage = async (title: string): Promise<CachedImagePa
     }
 
     if (first.url) {
-      const generatedResponse = await fetch(first.url);
+      const generatedResponse = await fetchWithTimeout(first.url, undefined, imageFetchTimeoutMs);
       if (!generatedResponse.ok) {
         return null;
       }
@@ -298,6 +358,55 @@ const tryGenerateOpenAiTitleImage = async (title: string): Promise<CachedImagePa
     }
 
     return null;
+  } catch {
+    return null;
+  }
+};
+
+const tryGenerateHuggingFaceTitleImage = async (title: string): Promise<CachedImagePayload | null> => {
+  if (!huggingFaceApiKey) {
+    return null;
+  }
+
+  const prompt = buildImageGenerationPrompt(title);
+  const endpoint = huggingFaceImageEndpoint
+    || `https://api-inference.huggingface.co/models/${encodeURIComponent(huggingFaceImageModel)}`;
+
+  try {
+    const response = await fetchWithTimeout(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${huggingFaceApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        options: {
+          wait_for_model: true
+        }
+      })
+    }, aiImageGenerationTimeoutMs);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!contentType.startsWith('image/')) {
+      return null;
+    }
+
+    const imageBuffer = Buffer.from(await response.arrayBuffer());
+    if (!imageBuffer.length) {
+      return null;
+    }
+
+    return {
+      contentType,
+      contentInBase64: imageBuffer.toString('base64'),
+      savedAt: new Date().toISOString(),
+      source: 'generated'
+    };
   } catch {
     return null;
   }
@@ -360,6 +469,7 @@ const buildInlineArticleAttachment = async (
   if (isAiImage) {
     const cachedPayload = await getCachedImagePayload(cacheKey);
     if (cachedPayload) {
+      console.log(`Using cached AI title image for article ${index + 1} (${aiImageProvider})`);
       return {
         name: `article-${index + 1}.${getContentTypeExtension(cachedPayload.contentType)}`,
         contentType: cachedPayload.contentType,
@@ -370,9 +480,27 @@ const buildInlineArticleAttachment = async (
   }
 
   if (isAiImage && aiImageProvider === 'openai') {
+    console.log(`Generating AI title image with OpenAI for article ${index + 1}`);
     const generatedPayload = await tryGenerateOpenAiTitleImage(title);
     if (generatedPayload) {
       await setCachedImagePayload(cacheKey, generatedPayload);
+      console.log(`OpenAI AI image generated for article ${index + 1}`);
+
+      return {
+        name: `article-${index + 1}.${getContentTypeExtension(generatedPayload.contentType)}`,
+        contentType: generatedPayload.contentType,
+        contentInBase64: generatedPayload.contentInBase64,
+        contentId: cid
+      };
+    }
+  }
+
+  if (isAiImage && aiImageProvider === 'huggingface') {
+    console.log(`Generating AI title image with Hugging Face for article ${index + 1}`);
+    const generatedPayload = await tryGenerateHuggingFaceTitleImage(title);
+    if (generatedPayload) {
+      await setCachedImagePayload(cacheKey, generatedPayload);
+      console.log(`Hugging Face AI image generated for article ${index + 1}`);
 
       return {
         name: `article-${index + 1}.${getContentTypeExtension(generatedPayload.contentType)}`,
@@ -384,7 +512,7 @@ const buildInlineArticleAttachment = async (
   }
 
   try {
-    const response = await fetch(imageUrl);
+    const response = await fetchWithTimeout(imageUrl, undefined, imageFetchTimeoutMs);
     if (!response.ok) {
       throw new Error(`Failed to download image: ${response.status}`);
     }
@@ -416,9 +544,12 @@ const buildInlineArticleAttachment = async (
       contentId: cid
     };
   } catch {
+    if (isAiImage) {
+      console.warn(`AI image retrieval failed for article ${index + 1}; using placeholder fallback`);
+    }
     try {
       const placeholderUrl = buildTitleReferenceImage(title);
-      const placeholderResponse = await fetch(placeholderUrl);
+      const placeholderResponse = await fetchWithTimeout(placeholderUrl, undefined, imageFetchTimeoutMs);
       if (placeholderResponse.ok) {
         const placeholderType = (placeholderResponse.headers.get('content-type') || 'image/png')
           .split(';')[0]
@@ -459,31 +590,113 @@ const buildInlineArticleAttachment = async (
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
   if (!emailClient) {
     console.error('Email client not configured. Set AZURE_COMMUNICATION_CONNECTION_STRING');
+    rememberEmailSendError(options.to, 'Email client not configured');
     return false;
   }
 
-  try {
-    const message: EmailMessage = {
-      senderAddress: senderEmail,
-      content: {
+  clearEmailSendError(options.to);
+
+  const message: EmailMessage = {
+    senderAddress: senderEmail,
+    content: {
+      subject: options.subject,
+      html: options.htmlContent
+    },
+    recipients: {
+      to: [{ address: options.to }]
+    },
+    attachments: options.attachments
+  };
+
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      console.log(`Starting email send to ${options.to} (attempt ${attempt}/${maxAttempts})`);
+
+      const poller = await Promise.race([
+        emailClient.beginSend(message),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            const timeoutError = new Error(`Email beginSend timed out after ${emailBeginSendTimeoutMs}ms`);
+            (timeoutError as Error & { code?: string; statusCode?: number }).code = 'EmailBeginSendTimeout';
+            (timeoutError as Error & { code?: string; statusCode?: number }).statusCode = 408;
+            reject(timeoutError);
+          }, emailBeginSendTimeoutMs);
+        })
+      ]);
+
+      console.log(`Email send operation accepted for ${options.to}; waiting for provider completion`);
+
+      const result = await Promise.race([
+        poller.pollUntilDone(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            const timeoutError = new Error(`Email send timed out after ${emailSendTimeoutMs}ms`);
+            (timeoutError as Error & { code?: string; statusCode?: number }).code = 'EmailPollTimeout';
+            (timeoutError as Error & { code?: string; statusCode?: number }).statusCode = 408;
+            reject(timeoutError);
+          }, emailSendTimeoutMs);
+        })
+      ]);
+
+      console.log(`✓ Email sent to ${options.to}, Message ID: ${result.id}`);
+      clearEmailSendError(options.to);
+      return true;
+    } catch (error) {
+      const err = error as {
+        name?: string;
+        message?: string;
+        code?: string;
+        statusCode?: number;
+        details?: {
+          [key: string]: unknown;
+        };
+        response?: {
+          parsedBody?: unknown;
+          bodyAsText?: string;
+        };
+      };
+
+      const retryAfterRaw = err?.details && typeof err.details['retry-after'] !== 'undefined'
+        ? String(err.details['retry-after'])
+        : '';
+      const retryAfterFromMessage = err?.message?.match(/after\s+(\d+)\s+seconds?/i);
+      const retryAfterSeconds = Number(retryAfterRaw || retryAfterFromMessage?.[1] || '');
+      const isRateLimited = err?.statusCode === 429 || err?.code === 'TooManyRequests';
+      const isTimeout = err?.code === 'EmailPollTimeout' || err?.code === 'EmailBeginSendTimeout' || err?.statusCode === 408;
+      const canRetry = (isRateLimited || isTimeout) && attempt < maxAttempts;
+
+      const failureSummary = `${err?.code || 'EmailSendError'}: ${err?.message || 'Unknown email send failure'}`;
+      rememberEmailSendError(options.to, failureSummary);
+
+      console.error('Error sending email:', {
+        to: options.to,
         subject: options.subject,
-        html: options.htmlContent
-      },
-      recipients: {
-        to: [{ address: options.to }]
-      },
-      attachments: options.attachments
-    };
+        attempt,
+        maxAttempts,
+        name: err?.name,
+        message: err?.message,
+        code: err?.code,
+        statusCode: err?.statusCode,
+        details: err?.details,
+        responseBody: err?.response?.parsedBody || err?.response?.bodyAsText
+      });
 
-    const poller = await emailClient.beginSend(message);
-    const result = await poller.pollUntilDone();
+      if (!canRetry) {
+        return false;
+      }
 
-    console.log(`✓ Email sent to ${options.to}, Message ID: ${result.id}`);
-    return true;
-  } catch (error) {
-    console.error('Error sending email:', error);
-    return false;
+      const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.min(retryAfterSeconds * 1000, 65000)
+        : (1500 + (attempt * 1200));
+
+      console.warn(`Email provider transient failure (${isRateLimited ? 'rate-limit' : 'timeout'}). Retrying ${options.to} in ${retryDelayMs}ms (attempt ${attempt + 1}/${maxAttempts})`);
+      await wait(retryDelayMs);
+    }
   }
+
+  return false;
 };
 
 export const sendVerificationEmail = async (email: string, token: string): Promise<boolean> => {
@@ -534,32 +747,37 @@ export const sendNewsletterEmail = async (
   const logoCid = 'oasa-header-logo';
   const logoBase64 = loadLogoBase64();
 
-  const articleWithImageCids = await Promise.all(
-    articles.map(async (article, index) => {
-      const cid = `article-image-${index + 1}`;
-      const rawImageUrl = article.imageUrl;
-      const shouldBypassGeneratedImage =
-        !titleImageGenerationEnabled &&
-        (!rawImageUrl || isAiTitleImageUrl(rawImageUrl) || isLocalThemedImageUrl(rawImageUrl));
+  const articleWithImageCids: Array<{ article: any; cid?: string; attachment?: EmailAttachment; hasImage: boolean }> = [];
+  for (let index = 0; index < articles.length; index += 1) {
+    const article = articles[index];
+    const rawImageUrl = article.imageUrl;
+    const allowGeneratedTitleImage = titleImageGenerationEnabled;
+    const hasSourceImage = isRenderableSourceImageUrl(rawImageUrl);
 
-      const imageUrl = shouldBypassGeneratedImage
-        ? buildTitleReferenceImage(article.title || 'Space update')
-        : (rawImageUrl || buildLocalThemedImageUrl(article.title || 'Space update'));
+    if (!hasSourceImage && !allowGeneratedTitleImage) {
+      articleWithImageCids.push({ article, hasImage: false });
+      continue;
+    }
 
-      const attachment = await buildInlineArticleAttachment(
-        imageUrl,
-        article.title || 'Space update',
-        index,
-        cid
-      );
+    const cid = `article-image-${index + 1}`;
+    const imageUrl = hasSourceImage
+      ? String(rawImageUrl)
+      : buildLocalThemedImageUrl(article.title || 'Space update');
 
-      return {
-        article,
-        cid,
-        attachment
-      };
-    })
-  );
+    const attachment = await buildInlineArticleAttachment(
+      imageUrl,
+      article.title || 'Space update',
+      index,
+      cid
+    );
+
+    articleWithImageCids.push({
+      article,
+      cid,
+      attachment,
+      hasImage: true
+    });
+  }
 
   const attachments: EmailAttachment[] = [
     {
@@ -568,10 +786,40 @@ export const sendNewsletterEmail = async (
       contentInBase64: logoBase64,
       contentId: logoCid
     },
-    ...articleWithImageCids.map(item => item.attachment)
+    ...articleWithImageCids
+      .map(item => item.attachment)
+      .filter((attachment): attachment is EmailAttachment => Boolean(attachment))
   ];
 
-  const htmlContent = `
+  const renderInlineArticleBlocks = (): string => articleWithImageCids.map(({ article, cid, hasImage }) => {
+    const titleClass = hasImage ? 'article-title-box' : 'article-title-box text-only';
+    return `
+          <div class="article">
+            <div class="${titleClass}"><h3>${article.title}</h3></div>
+            ${hasImage && cid ? `<img src="cid:${cid}" alt="${article.title}">` : ''}
+            <p>${article.description}</p>
+            <p><a href="${article.link}" class="read-more">Read more →</a></p>
+            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString()}</p>
+          </div>
+        `;
+  }).join('');
+
+  const renderExternalArticleBlocks = (): string => articles.map((article) => {
+    const hasExternalImage = isRenderableSourceImageUrl(article?.imageUrl);
+    const titleClass = hasExternalImage ? 'article-title-box' : 'article-title-box text-only';
+
+    return `
+          <div class="article">
+            <div class="${titleClass}"><h3>${article.title}</h3></div>
+            ${hasExternalImage ? `<img src="${article.imageUrl}" alt="${article.title}">` : ''}
+            <p>${article.description}</p>
+            <p><a href="${article.link}" class="read-more">Read more →</a></p>
+            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString()}</p>
+          </div>
+        `;
+  }).join('');
+
+  const renderNewsletterHtml = (articleMarkup: string): string => `
     <!DOCTYPE html>
     <html>
     <head>
@@ -582,6 +830,10 @@ export const sendNewsletterEmail = async (
         .header-logo { max-width: 220px; height: auto; margin: 0 auto 14px; display: block; }
         .article { margin: 20px 0; padding: 15px; border-left: 4px solid #0066cc; background-color: #f9f9f9; }
         .article h3 { margin-top: 0; }
+        .article-title-box { background: #eef4ff; border: 1px solid #d6e4ff; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+        .article-title-box h3 { margin: 0; font-size: 20px; line-height: 1.3; }
+        .article-title-box.text-only { padding: 6px 10px; background: #f3f4f6; border-color: #e5e7eb; }
+        .article-title-box.text-only h3 { font-size: 16px; }
         .article img { max-width: 100%; height: auto; margin: 10px 0; }
         .read-more { color: #0066cc; text-decoration: none; font-weight: bold; }
         .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }
@@ -596,17 +848,7 @@ export const sendNewsletterEmail = async (
           <p>Latest updates from space exploration and the low-altitude economy</p>
         </div>
         
-        ${articleWithImageCids.map(({ article, cid }) => {
-          return `
-          <div class="article">
-            <h3>${article.title}</h3>
-            <img src="cid:${cid}" alt="${article.title}">
-            <p>${article.description}</p>
-            <p><a href="${article.link}" class="read-more">Read more →</a></p>
-            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString()}</p>
-          </div>
-        `;
-        }).join('')}
+        ${articleMarkup}
         
         <div class="footer">
           <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
@@ -618,10 +860,36 @@ export const sendNewsletterEmail = async (
     </html>
   `;
 
-  return await sendEmail({
+  const htmlContent = renderNewsletterHtml(renderInlineArticleBlocks());
+
+  const sentWithInlineImages = await sendEmail({
     to: email,
     subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
     htmlContent,
     attachments
+  });
+
+  if (sentWithInlineImages) {
+    return true;
+  }
+
+  // If inline/cached attachments fail provider validation, retry with external image URLs.
+  console.warn(`Retrying newsletter send to ${email} without inline article image attachments`);
+
+  const fallbackHtmlContent = renderNewsletterHtml(renderExternalArticleBlocks());
+  const minimalAttachments: EmailAttachment[] = [
+    {
+      name: 'oasa-logo.png',
+      contentType: 'image/png',
+      contentInBase64: logoBase64,
+      contentId: logoCid
+    }
+  ];
+
+  return await sendEmail({
+    to: email,
+    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
+    htmlContent: fallbackHtmlContent,
+    attachments: minimalAttachments
   });
 };

@@ -97,6 +97,13 @@ AI_IMAGE_PROVIDER=openai
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_IMAGE_MODEL=gpt-image-1
 
+# Optional: Hugging Face title image generation
+# Use when AI_IMAGE_PROVIDER=huggingface
+HUGGINGFACE_API_KEY=your-huggingface-api-key
+HUGGINGFACE_IMAGE_MODEL=black-forest-labs/FLUX.1-dev
+# Optional override for custom Inference Endpoint
+HUGGINGFACE_IMAGE_ENDPOINT=
+
 # Optional: image cache tuning
 IMAGE_CACHE_TTL_HOURS=336
 IMAGE_CACHE_PLACEHOLDER_TTL_HOURS=6

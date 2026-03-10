@@ -1,6 +1,4 @@
-import { app, InvocationContext, Timer } from '@azure/functions';
-
-export async function NewsAggregator(myTimer: Timer, context: InvocationContext): Promise<void> {
+export default async function NewsAggregator(context: any, myTimer: any): Promise<void> {
   context.log('News aggregation timer trigger function started');
   const startTime = Date.now();
 
@@ -31,8 +29,3 @@ export async function NewsAggregator(myTimer: Timer, context: InvocationContext)
     throw error;
   }
 }
-
-app.timer('NewsAggregator', {
-  schedule: '0 0 */6 * * *', // Every 6 hours
-  handler: NewsAggregator
-});

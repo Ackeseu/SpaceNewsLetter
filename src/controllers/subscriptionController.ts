@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import Subscriber from '../models/Subscriber';
+import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '../services/emailService';
+import { Op } from 'sequelize';
 
 const requireAdminToken = (req: Request, res: Response): boolean => {
   const adminToken = process.env.ADMIN_TEST_TOKEN;
@@ -273,19 +275,146 @@ export const updateSubscriberAdmin = async (req: Request, res: Response): Promis
   }
 };
 
+export const deleteSubscriberAdmin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const subscriber = await Subscriber.findByPk(id);
+    if (!subscriber) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    await subscriber.destroy();
+    res.status(200).json({ message: 'Subscriber deleted' });
+  } catch (error) {
+    console.error('Delete subscriber admin error:', error);
+    res.status(500).json({ error: 'Failed to delete subscriber' });
+  }
+};
+
 export const listAllSubscribers = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!requireAdminToken(req, res)) {
       return;
     }
 
+    const pageRaw = Number(req.query.page || 1);
+    const pageSizeRaw = Number(req.query.pageSize || 25);
+    const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+    const pageSize = Number.isFinite(pageSizeRaw)
+      ? Math.min(Math.max(Math.floor(pageSizeRaw), 1), 200)
+      : 25;
+    const search = String(req.query.search || '').trim();
+    const status = String(req.query.status || 'all').trim().toLowerCase();
+    const frequency = String(req.query.frequency || 'all').trim().toLowerCase();
+    const risk = String(req.query.risk || 'all').trim().toLowerCase();
+
+    const whereClause: any = {};
+    if (status === 'verified') {
+      whereClause.isVerified = true;
+    } else if (status === 'pending') {
+      whereClause.isVerified = false;
+    } else if (status === 'inactive') {
+      whereClause.isActive = false;
+    }
+
+    if (frequency !== 'all' && ['daily', 'weekly', 'monthly'].includes(frequency)) {
+      whereClause.frequency = frequency;
+    }
+
+    if (search) {
+      whereClause[Op.or] = [
+        { email: { [Op.iLike]: `%${search}%` } },
+        { firstName: { [Op.iLike]: `%${search}%` } },
+        { lastName: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+
     const subscribers = await Subscriber.findAll({
       attributes: ['id', 'email', 'firstName', 'lastName', 'isVerified', 'isActive', 'frequency', 'topics', 'regions', 'preferencesToken', 'unsubscribeToken'],
-      where: { isActive: true },
+      where: whereClause,
       order: [['createdAt', 'DESC']]
     });
 
-    res.status(200).json(subscribers);
+    const emails = subscribers.map((subscriber) => subscriber.email);
+    const deliveryLogs = emails.length > 0
+      ? await NewsletterDeliveryLog.findAll({
+          attributes: ['email', 'success', 'deliveredAt', 'frequency', 'errorMessage'],
+          where: {
+            email: { [Op.in]: emails },
+            triggerType: 'scheduled'
+          },
+          order: [['deliveredAt', 'DESC']]
+        })
+      : [];
+
+    const deliveryByEmail = new Map<string, NewsletterDeliveryLog[]>();
+    deliveryLogs.forEach((log) => {
+      const existing = deliveryByEmail.get(log.email) || [];
+      existing.push(log);
+      deliveryByEmail.set(log.email, existing);
+    });
+
+    const enrichedSubscribers = subscribers.map((subscriber) => {
+      const logs = deliveryByEmail.get(subscriber.email) || [];
+      const latest = logs[0];
+      const latestSuccess = logs.find((log) => log.success);
+      const latestFailure = logs.find((log) => !log.success);
+
+      let consecutiveFailures = 0;
+      for (const log of logs) {
+        if (log.success) {
+          break;
+        }
+        consecutiveFailures += 1;
+      }
+
+      return {
+        ...subscriber.toJSON(),
+        deliveryStatus: {
+          lastDeliveryAt: latest?.deliveredAt || null,
+          lastDeliverySuccess: latest ? latest.success : null,
+          lastSuccessAt: latestSuccess?.deliveredAt || null,
+          lastFailureAt: latestFailure?.deliveredAt || null,
+          lastErrorMessage: latestFailure?.errorMessage || null,
+          consecutiveFailures,
+          recentDeliveryFrequency: latest?.frequency || null
+        }
+      };
+    });
+
+    const riskFilteredSubscribers = enrichedSubscribers.filter((subscriber) => {
+      const failureStreak = Number(subscriber.deliveryStatus?.consecutiveFailures || 0);
+      if (risk === 'at-risk') {
+        return failureStreak >= 2;
+      }
+      if (risk === 'healthy') {
+        return failureStreak < 2;
+      }
+      return true;
+    });
+
+    const total = riskFilteredSubscribers.length;
+    const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
+    const pagedSubscribers = riskFilteredSubscribers.slice(offset, offset + pageSize);
+
+    res.status(200).json({
+      subscribers: pagedSubscribers,
+      pagination: {
+        page: safePage,
+        pageSize,
+        total,
+        totalPages,
+        hasPrev: safePage > 1,
+        hasNext: safePage < totalPages
+      }
+    });
   } catch (error) {
     console.error('List subscribers error:', error);
     res.status(500).json({ error: 'Failed to fetch subscribers' });
@@ -299,8 +428,6 @@ export const resendVerificationToUnverified = async (req: Request, res: Response
     }
 
     const { emailDomain } = req.query;
-    const { Op } = require('sequelize');
-
     // Get all unverified subscribers
     let where: Record<string, any> = { isVerified: false };
     if (emailDomain) {

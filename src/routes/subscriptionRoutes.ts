@@ -9,7 +9,8 @@ import {
   updatePreferences,
   getSubscriberStats,
   listAllSubscribers,
-  updateSubscriberAdmin
+  updateSubscriberAdmin,
+  deleteSubscriberAdmin
 } from '../controllers/subscriptionController';
 
 const router = Router();
@@ -31,6 +32,9 @@ router.put(
   ],
   updateSubscriberAdmin
 );
+
+// Admin: delete subscriber
+router.delete('/admin/:id', deleteSubscriberAdmin);
 
 // Subscribe to newsletter
 router.post(

@@ -1,12 +1,14 @@
-import { app, InvocationContext, Timer } from '@azure/functions';
-
-export async function SendNewsletter(myTimer: Timer, context: InvocationContext): Promise<void> {
+export default async function SendNewsletter(context: any, myTimer: any): Promise<void> {
   context.log('Newsletter sending timer trigger function started');
   const startTime = Date.now();
 
   try {
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
-    const senderToken = process.env.NEWSLETTER_SENDER_TOKEN || 'default-token';
+    const senderToken = process.env.NEWSLETTER_SENDER_TOKEN;
+
+    if (!senderToken) {
+      throw new Error('NEWSLETTER_SENDER_TOKEN is not configured');
+    }
 
     const sendByFrequency = async (frequency: 'daily' | 'weekly') => {
       context.log(`Calling newsletter endpoint for ${frequency} subscribers at ${apiUrl}/api/newsletters/send-scheduled`);
@@ -15,7 +17,8 @@ export async function SendNewsletter(myTimer: Timer, context: InvocationContext)
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-sender-token': senderToken
+          'x-sender-token': senderToken,
+          'x-scheduled-source': 'function'
         },
         body: JSON.stringify({ frequency })
       });
@@ -47,8 +50,3 @@ export async function SendNewsletter(myTimer: Timer, context: InvocationContext)
     throw error;
   }
 }
-
-app.timer('SendNewsletter', {
-  schedule: '0 0 9 * * *', // Every day at 9 AM UTC
-  handler: SendNewsletter
-});

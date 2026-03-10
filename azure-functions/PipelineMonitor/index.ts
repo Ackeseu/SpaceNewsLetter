@@ -1,5 +1,3 @@
-import { app, InvocationContext, Timer } from '@azure/functions';
-
 let lastHealthyState: boolean | null = null;
 let lastAlertAt: number | null = null;
 
@@ -24,7 +22,7 @@ const sendAlert = async (
   apiUrl: string,
   monitorToken: string,
   status: Record<string, unknown>,
-  context: InvocationContext
+  context: any
 ): Promise<void> => {
   const response = await fetch(`${apiUrl}/api/newsletters/monitor/alert`, {
     method: 'POST',
@@ -46,7 +44,7 @@ const sendAlert = async (
   context.log('✓ Monitor alert sent successfully');
 };
 
-export async function PipelineMonitor(myTimer: Timer, context: InvocationContext): Promise<void> {
+export default async function PipelineMonitor(context: any, myTimer: any): Promise<void> {
   context.log('Pipeline monitor timer started');
 
   const apiUrl = process.env.API_URL || 'http://localhost:3000';
@@ -108,8 +106,3 @@ export async function PipelineMonitor(myTimer: Timer, context: InvocationContext
     throw error;
   }
 }
-
-app.timer('PipelineMonitor', {
-  schedule: '0 */30 * * * *',
-  handler: PipelineMonitor
-});

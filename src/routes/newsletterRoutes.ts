@@ -12,7 +12,9 @@ import {
   getDeliveryStatusByEmail,
   listNewsSources,
   createNewsSource,
-  deleteNewsSource
+  deleteNewsSource,
+  testNewsSource,
+  getAdminChangelog
 } from '../controllers/newsletterController';
 
 const router = Router();
@@ -40,6 +42,8 @@ router.post(
   createNewsSource
 );
 router.delete('/sources/:id', deleteNewsSource);
+router.post('/sources/:id/test', testNewsSource);
+router.get('/admin/changelog', getAdminChangelog);
 
 // Send test newsletter
 router.post(

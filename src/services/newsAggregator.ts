@@ -156,11 +156,12 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'secure your spot'
 ];
 
-const AI_TITLE_IMAGES_ENABLED = (process.env.AI_TITLE_IMAGES_ENABLED || 'true').toLowerCase() !== 'false';
+const AI_TITLE_IMAGES_ENABLED = (process.env.AI_TITLE_IMAGES_ENABLED || 'false').toLowerCase() === 'true';
 
 const buildAiTitleImageUrl = (title: string): string => {
   const cleaned = title.replace(/\s+/g, ' ').trim() || 'Space Update';
-  const prompt = 'space news illustration cinematic no text no logos';
+  const clippedTitle = cleaned.slice(0, 140);
+  const prompt = `space news illustration cinematic inspired by: ${clippedTitle}, no text, no logos`;
   const seed = crypto.createHash('sha256').update(cleaned.toLowerCase()).digest('hex').slice(0, 12);
   const encodedPrompt = encodeURIComponent(prompt);
   return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=640&height=360&nologo=true&seed=${seed}`;
@@ -171,6 +172,8 @@ const resolveArticleImageUrl = (title: string, sourceImageUrl?: string): string 
     return sourceImageUrl;
   }
 
+  // Prefer text-only cards when no real source image exists.
+  // AI-generated title images are intentionally disabled by default.
   if (!AI_TITLE_IMAGES_ENABLED) {
     return undefined;
   }

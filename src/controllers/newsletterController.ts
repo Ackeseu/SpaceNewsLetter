@@ -1,13 +1,52 @@
 import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
+import Parser from 'rss-parser';
 import Article from '../models/Article';
 import Subscriber from '../models/Subscriber';
 import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
-import { sendEmail, sendNewsletterEmail } from '../services/emailService';
+import { consumeLastEmailSendError, sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import crypto from 'crypto';
 import NewsSource from '../models/NewsSource';
+import adminChangelogConfig from '../config/adminChangelog.json';
+
+const sourceTestParser = new Parser();
+
+const ADMIN_CHANGELOG_FALLBACK_ENTRIES = [
+  {
+    date: '2026-03-10',
+    title: 'Subscriber search, filters, and pagination moved server-side',
+    detail: 'Improves performance for larger subscriber lists and keeps filter state queryable.'
+  },
+  {
+    date: '2026-03-10',
+    title: 'Source feed test action added',
+    detail: 'Sources tab can now validate RSS fetch/parse and show sampled headlines.'
+  },
+  {
+    date: '2026-03-10',
+    title: 'Monitoring received freshness and reliability updates',
+    detail: 'Includes last-updated ticker and improved bottom-section rendering flow.'
+  }
+];
+
+const getAdminChangelogEntries = (): Array<{ date: string; title: string; detail: string }> => {
+  if (!Array.isArray(adminChangelogConfig)) {
+    return ADMIN_CHANGELOG_FALLBACK_ENTRIES;
+  }
+
+  const normalized = adminChangelogConfig
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => ({
+      date: String((entry as any).date || '').trim(),
+      title: String((entry as any).title || '').trim(),
+      detail: String((entry as any).detail || '').trim()
+    }))
+    .filter((entry) => entry.date && entry.title && entry.detail);
+
+  return normalized.length > 0 ? normalized : ADMIN_CHANGELOG_FALLBACK_ENTRIES;
+};
 
 const ensurePreferencesToken = async (subscriber: Subscriber): Promise<string> => {
   if (subscriber.preferencesToken) {
@@ -45,6 +84,36 @@ const getMaxPerSource = (source: string): number => {
   return MAX_PER_SOURCE_OVERRIDES[source] ?? DEFAULT_MAX_PER_SOURCE;
 };
 
+const pause = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const getEmailDomain = (email: string): string => {
+  const atIndex = email.lastIndexOf('@');
+  if (atIndex === -1) {
+    return '';
+  }
+  return email.slice(atIndex + 1).toLowerCase();
+};
+
+const parseRetryAfterSeconds = (message: string): number | null => {
+  const match = message.match(/after\s+(\d+)\s+seconds?/i);
+  if (!match) {
+    return null;
+  }
+
+  const seconds = Number(match[1]);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+};
+
+const sqlLikeToRegex = (pattern: string): RegExp => {
+  const escaped = pattern
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/%/g, '.*')
+    .replace(/_/g, '.');
+  return new RegExp(`^${escaped}$`, 'i');
+};
+
 const requireAdminToken = (req: Request, res: Response): boolean => {
   const adminToken = process.env.ADMIN_TEST_TOKEN;
   const providedToken = req.header('x-admin-token') || req.query.token;
@@ -59,9 +128,13 @@ const requireAdminToken = (req: Request, res: Response): boolean => {
 
 const requireMonitorToken = (req: Request, res: Response): boolean => {
   const monitorToken = process.env.MONITOR_TOKEN || process.env.NEWSLETTER_SENDER_TOKEN;
+  const adminToken = process.env.ADMIN_TEST_TOKEN;
   const providedToken = req.header('x-monitor-token') || req.query.token;
 
-  if (!monitorToken || providedToken !== monitorToken) {
+  const isMonitorMatch = !!monitorToken && providedToken === monitorToken;
+  const isAdminMatch = !!adminToken && providedToken === adminToken;
+
+  if (!isMonitorMatch && !isAdminMatch) {
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
@@ -202,12 +275,13 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       preferencesToken
     );
     if (!emailSent) {
+      const sendError = consumeLastEmailSendError(subscriber.email) || 'Email service returned unsuccessful status';
       await recordDeliveryAttempt({
         email: subscriber.email,
         triggerType: 'test',
         frequency: subscriber.frequency,
         success: false,
-        errorMessage: 'Email service returned unsuccessful status',
+        errorMessage: sendError,
         articleCount: articles.length
       });
       res.status(500).json({ error: 'Failed to send test newsletter' });
@@ -265,7 +339,50 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       return;
     }
 
-    const { frequency = 'weekly' } = req.body;
+    const { frequency = 'weekly', dryRun: bodyDryRun, manual: bodyManual } = req.body as {
+      frequency?: 'daily' | 'weekly' | 'monthly';
+      dryRun?: boolean;
+      manual?: boolean;
+    };
+
+    const queryDryRun = typeof req.query.dryRun === 'string' && req.query.dryRun.toLowerCase() === 'true';
+    const dryRun = queryDryRun || bodyDryRun === true;
+
+    const queryManual = typeof req.query.manual === 'string' && req.query.manual.toLowerCase() === 'true';
+    const manualHeader = (req.header('x-manual-trigger') || '').trim().toLowerCase() === 'true';
+    const explicitManual = queryManual || manualHeader || bodyManual === true || Boolean(req.header('x-admin-token'));
+
+    const requestSource = (req.header('x-scheduled-source') || '').trim().toLowerCase();
+    const isFunctionSource = requestSource === 'function';
+    const requireFunctionSourceHeader = (process.env.REQUIRE_FUNCTION_SOURCE_HEADER || 'false').toLowerCase() === 'true';
+
+    if (requireFunctionSourceHeader && !isFunctionSource) {
+      res.status(403).json({
+        error: 'Scheduled source header required',
+        hint: 'Provide x-scheduled-source=function for trusted function callers'
+      });
+      return;
+    }
+
+    if (explicitManual) {
+      const allowManual = (process.env.ALLOW_MANUAL_SCHEDULED_SEND || 'false').toLowerCase() === 'true';
+      if (!allowManual) {
+        res.status(403).json({
+          error: 'Manual scheduled sends are disabled',
+          hint: 'Set ALLOW_MANUAL_SCHEDULED_SEND=true and provide manual confirmation token'
+        });
+        return;
+      }
+
+      const expectedManualToken = process.env.MANUAL_SEND_CONFIRMATION_TOKEN || '';
+      if (expectedManualToken) {
+        const providedManualToken = (req.header('x-manual-send-token') || String(req.query.manualToken || '')).trim();
+        if (providedManualToken !== expectedManualToken) {
+          res.status(401).json({ error: 'Manual confirmation token required' });
+          return;
+        }
+      }
+    }
 
     // Get all verified, active subscribers with matching frequency
     const subscribers = await Subscriber.findAll({
@@ -282,15 +399,51 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       return;
     }
 
+    if (dryRun) {
+      const recipientPreviewLimit = Number(process.env.MANUAL_SEND_DRYRUN_PREVIEW_LIMIT || 50);
+      const recipients = subscribers.map((subscriber) => subscriber.email);
+      const domains = recipients.reduce<Record<string, number>>((acc, email) => {
+        const domain = getEmailDomain(email) || 'unknown';
+        acc[domain] = (acc[domain] || 0) + 1;
+        return acc;
+      }, {});
+
+      const domainBreakdown = Object.entries(domains)
+        .map(([domain, count]) => ({ domain, count }))
+        .sort((a, b) => b.count - a.count || a.domain.localeCompare(b.domain));
+
+      res.status(200).json({
+        dryRun: true,
+        frequency,
+        totalRecipients: recipients.length,
+        recipientsPreview: recipients.slice(0, Math.max(recipientPreviewLimit, 0)),
+        domainBreakdown
+      });
+      return;
+    }
+
     console.log(`Sending newsletters to ${subscribers.length} subscribers...`);
 
     let sent = 0;
     let failed = 0;
     const failedRecipients: Array<{ email: string; reason: string }> = [];
+    const baseGapMs = Number(process.env.EMAIL_SEND_GAP_MS || 1200);
+    const jitterMs = Number(process.env.EMAIL_SEND_JITTER_MS || 700);
+    const minDomainCooldownMs = Number(process.env.EMAIL_DOMAIN_MIN_COOLDOWN_MS || 60000);
+    const domainCooldownUntil = new Map<string, number>();
 
     // Send newsletter to each subscriber with diverse articles (max 2 per source)
     for (const subscriber of subscribers) {
       try {
+        const domain = getEmailDomain(subscriber.email);
+        const now = Date.now();
+        const cooldownUntil = domain ? domainCooldownUntil.get(domain) || 0 : 0;
+        if (cooldownUntil > now) {
+          const waitMs = cooldownUntil - now;
+          console.warn(`Domain cooldown active for ${domain}; delaying ${subscriber.email} by ${waitMs}ms`);
+          await pause(waitMs);
+        }
+
         const maxArticles = 12;
         const preferenceWhere = buildPreferenceWhere(subscriber);
         const freshnessThreshold = new Date();
@@ -355,18 +508,29 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           });
         } else {
           failed++;
+          const sendError = consumeLastEmailSendError(subscriber.email) || 'Email service returned unsuccessful status';
           console.error(`Failed to send newsletter to ${subscriber.email}`);
+
+          const retryAfterSeconds = parseRetryAfterSeconds(sendError);
+          if (domain && sendError.toLowerCase().includes('toomanyrequests')) {
+            const cooldownMs = Math.max(
+              minDomainCooldownMs,
+              retryAfterSeconds !== null ? retryAfterSeconds * 1000 : 0
+            );
+            domainCooldownUntil.set(domain, Date.now() + cooldownMs);
+          }
+
           await recordDeliveryAttempt({
             email: subscriber.email,
             triggerType: 'scheduled',
             frequency: subscriber.frequency,
             success: false,
-            errorMessage: 'Email service returned unsuccessful status',
+            errorMessage: sendError,
             articleCount: articles.length
           });
           failedRecipients.push({
             email: subscriber.email,
-            reason: 'Email service returned unsuccessful status'
+            reason: sendError
           });
         }
       } catch (error) {
@@ -385,6 +549,10 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           reason: error instanceof Error ? error.message : 'Unknown error'
         });
       }
+
+      // Keep a small gap between sends to avoid provider burst throttling.
+      const randomJitter = Math.floor(Math.random() * Math.max(jitterMs, 0));
+      await pause(baseGapMs + randomJitter);
     }
 
     console.log(`✓ Newsletter sending completed. Sent ${sent}, failed ${failed}`);
@@ -540,6 +708,60 @@ export const deleteNewsSource = async (req: Request, res: Response): Promise<voi
   }
 };
 
+export const testNewsSource = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const source = await NewsSource.findByPk(id);
+
+    if (!source) {
+      res.status(404).json({ error: 'Source not found' });
+      return;
+    }
+
+    const feed = await sourceTestParser.parseURL(source.url);
+    const items = Array.isArray(feed.items) ? feed.items : [];
+
+    res.status(200).json({
+      source: {
+        id: source.id,
+        name: source.source,
+        url: source.url
+      },
+      feedTitle: feed.title || null,
+      itemCount: items.length,
+      sampleItems: items.slice(0, 3).map((item) => ({
+        title: item.title || 'Untitled',
+        link: item.link || null,
+        pubDate: item.pubDate || null
+      }))
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Test news source error:', error);
+    res.status(502).json({ error: `Failed to fetch or parse source: ${message}` });
+  }
+};
+
+export const getAdminChangelog = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    res.status(200).json({
+      updatedAt: new Date().toISOString(),
+      entries: getAdminChangelogEntries()
+    });
+  } catch (error) {
+    console.error('Get admin changelog error:', error);
+    res.status(500).json({ error: 'Failed to fetch admin changelog' });
+  }
+};
+
 export const getPipelineStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!requireMonitorToken(req, res)) {
@@ -548,6 +770,35 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
 
     const staleThresholdMinutes = Number(process.env.MONITOR_MAX_STALE_MINUTES || 720);
     const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const previous24Hours = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const now = Date.now();
+
+    // Exclude demo/test recipients from delivery health, configurable via env.
+    // Example: MONITOR_EXCLUDED_EMAIL_PATTERNS=%@example.com,%+demo@%,test+%@%
+    const excludedEmailPatterns = (process.env.MONITOR_EXCLUDED_EMAIL_PATTERNS
+      || '%@example.com,%@example.org,%@example.net,%@test.com,%@test.org,%@test.net')
+      .split(',')
+      .map(pattern => pattern.trim())
+      .filter(Boolean);
+
+    const dailySuccessFreshnessMinutes = 36 * 60;
+    const weeklySuccessFreshnessMinutes = 8 * 24 * 60;
+    const realRecipientLookbackHours = Number(process.env.MONITOR_REAL_RECIPIENT_LOOKBACK_HOURS || 48);
+    const realRecipientListLimit = Number(process.env.MONITOR_REAL_RECIPIENT_LIST_LIMIT || 12);
+
+    const baseScheduledWhere: Record<string, unknown> = {
+      triggerType: 'scheduled',
+      deliveredAt: { [Op.gte]: last24Hours }
+    };
+
+    const scopedScheduledWhere: Record<string, unknown> = excludedEmailPatterns.length > 0
+      ? {
+          ...baseScheduledWhere,
+          [Op.and]: excludedEmailPatterns.map((pattern) => ({
+            email: { [Op.notILike]: pattern }
+          }))
+        }
+      : baseScheduledWhere;
 
     const latestArticle = await Article.findOne({
       order: [['createdAt', 'DESC']]
@@ -558,19 +809,341 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       ? Math.floor((Date.now() - latestCreatedAt.getTime()) / (1000 * 60))
       : null;
 
-    const [articlesLast24h, verifiedActive, dailySubscribers, weeklySubscribers] = await Promise.all([
+    const [
+      articlesLast24h,
+      verifiedActive,
+      dailySubscribers,
+      weeklySubscribers,
+      latestDailySuccess,
+      latestWeeklySuccess,
+      deliveriesLast24h,
+      failedDeliveriesLast24h,
+      allDeliveriesLast24h,
+      allFailedDeliveriesLast24h
+    ] = await Promise.all([
       Article.count({ where: { createdAt: { [Op.gte]: last24Hours } } }),
       Subscriber.count({ where: { isVerified: true, isActive: true } }),
       Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'daily' } }),
-      Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'weekly' } })
+      Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'weekly' } }),
+      NewsletterDeliveryLog.findOne({
+        where: {
+          triggerType: 'scheduled',
+          frequency: 'daily',
+          success: true
+        },
+        order: [['deliveredAt', 'DESC']]
+      }),
+      NewsletterDeliveryLog.findOne({
+        where: {
+          triggerType: 'scheduled',
+          frequency: 'weekly',
+          success: true
+        },
+        order: [['deliveredAt', 'DESC']]
+      }),
+      NewsletterDeliveryLog.count({
+        where: scopedScheduledWhere
+      }),
+      NewsletterDeliveryLog.count({
+        where: {
+          ...scopedScheduledWhere,
+          success: false
+        }
+      }),
+      NewsletterDeliveryLog.count({
+        where: baseScheduledWhere
+      }),
+      NewsletterDeliveryLog.count({
+        where: {
+          ...baseScheduledWhere,
+          success: false
+        }
+      })
     ]);
+
+    const scopedScheduledLast24h = await NewsletterDeliveryLog.findAll({
+      attributes: ['email', 'success'],
+      where: scopedScheduledWhere,
+      raw: true
+    }) as Array<{ email: string; success: boolean }>;
+
+    const recipientOutcome = new Map<string, { attempts: number; hasSuccess: boolean }>();
+    for (const row of scopedScheduledLast24h) {
+      const key = String(row.email || '').toLowerCase();
+      if (!key) {
+        continue;
+      }
+      const current = recipientOutcome.get(key) || { attempts: 0, hasSuccess: false };
+      current.attempts += 1;
+      current.hasSuccess = current.hasSuccess || Boolean(row.success);
+      recipientOutcome.set(key, current);
+    }
+
+    const recipientsWithAnyAttempt = recipientOutcome.size;
+    const recipientsWithFinalSuccess = Array.from(recipientOutcome.values()).filter((item) => item.hasSuccess).length;
+    const recipientsWithoutFinalSuccess = recipientsWithAnyAttempt - recipientsWithFinalSuccess;
+    const finalOutcomeSuccessRateLast24h = recipientsWithAnyAttempt > 0
+      ? recipientsWithFinalSuccess / recipientsWithAnyAttempt
+      : 0;
+
+    const domainStats = new Map<string, { total: number; succeeded: number; failed: number }>();
+    for (const row of scopedScheduledLast24h) {
+      const email = String(row.email || '').toLowerCase();
+      const domain = getEmailDomain(email) || 'unknown';
+      const current = domainStats.get(domain) || { total: 0, succeeded: 0, failed: 0 };
+      current.total += 1;
+      if (row.success) {
+        current.succeeded += 1;
+      } else {
+        current.failed += 1;
+      }
+      domainStats.set(domain, current);
+    }
+
+    const domainHealth = Array.from(domainStats.entries())
+      .map(([domain, stats]) => ({
+        domain,
+        total: stats.total,
+        succeeded: stats.succeeded,
+        failed: stats.failed,
+        failureRate: stats.total > 0 ? stats.failed / stats.total : 0
+      }))
+      .sort((a, b) => b.failed - a.failed || b.total - a.total || a.domain.localeCompare(b.domain))
+      .slice(0, 12);
+
+    const scopedScheduledFailures48h = await NewsletterDeliveryLog.findAll({
+      attributes: ['errorMessage', 'deliveredAt'],
+      where: {
+        ...scopedScheduledWhere,
+        success: false,
+        deliveredAt: { [Op.gte]: previous24Hours }
+      },
+      raw: true
+    }) as Array<{ errorMessage: string | null; deliveredAt: string | Date }>;
+
+    const failureTrendMap = new Map<string, { current: number; previous: number }>();
+    for (const row of scopedScheduledFailures48h) {
+      const key = (row.errorMessage || 'Unknown failure').trim();
+      const deliveredAt = new Date(row.deliveredAt);
+      const bucket = failureTrendMap.get(key) || { current: 0, previous: 0 };
+      if (deliveredAt >= last24Hours) {
+        bucket.current += 1;
+      } else {
+        bucket.previous += 1;
+      }
+      failureTrendMap.set(key, bucket);
+    }
+
+    const topFailureReasons = Array.from(failureTrendMap.entries())
+      .map(([error, counts]) => ({
+        error,
+        currentCount: counts.current,
+        previousCount: counts.previous,
+        delta: counts.current - counts.previous
+      }))
+      .sort((a, b) => b.currentCount - a.currentCount || b.previousCount - a.previousCount || a.error.localeCompare(b.error))
+      .slice(0, 5);
+
+    const timelineLimit = Number(process.env.MONITOR_RUN_TIMELINE_LIMIT || 10);
+    const runTimelineRaw = await NewsletterDeliveryLog.sequelize!.query<{
+      frequency: string;
+      runminute: string;
+      total: string;
+      succeeded: string;
+      failed: string;
+      rn: string;
+    }>(
+      `
+      with grouped as (
+        select
+          frequency,
+          date_trunc('minute', "deliveredAt") as runMinute,
+          count(*) as total,
+          count(*) filter (where success = true) as succeeded,
+          count(*) filter (where success = false) as failed
+        from newsletter_delivery_logs
+        where "triggerType"='scheduled'
+          and "deliveredAt" >= now() - interval '7 days'
+          and frequency in ('daily', 'weekly')
+        group by frequency, runMinute
+      ), ranked as (
+        select *, row_number() over (partition by frequency order by runMinute desc) as rn
+        from grouped
+      )
+      select frequency, runMinute, total, succeeded, failed, rn
+      from ranked
+      where rn <= :timelineLimit
+      order by frequency asc, runMinute desc
+      `,
+      {
+        replacements: { timelineLimit: Math.max(timelineLimit, 1) },
+        type: QueryTypes.SELECT
+      }
+    );
+
+    const runTimeline = runTimelineRaw.map((row) => ({
+      frequency: row.frequency,
+      runAt: new Date(row.runminute).toISOString(),
+      total: Number(row.total),
+      succeeded: Number(row.succeeded),
+      failed: Number(row.failed)
+    }));
 
     const healthy =
       latestCreatedAt !== null &&
       minutesSinceLatestArticle !== null &&
       minutesSinceLatestArticle <= staleThresholdMinutes;
 
+    const minutesSinceDailySuccess = latestDailySuccess?.deliveredAt
+      ? Math.floor((now - new Date(latestDailySuccess.deliveredAt).getTime()) / (1000 * 60))
+      : null;
+
+    const minutesSinceWeeklySuccess = latestWeeklySuccess?.deliveredAt
+      ? Math.floor((now - new Date(latestWeeklySuccess.deliveredAt).getTime()) / (1000 * 60))
+      : null;
+
+    const dailyWorkflowHealthy =
+      dailySubscribers === 0
+        ? true
+        : minutesSinceDailySuccess !== null && minutesSinceDailySuccess <= dailySuccessFreshnessMinutes;
+
+    const weeklyWorkflowHealthy =
+      weeklySubscribers === 0
+        ? true
+        : minutesSinceWeeklySuccess !== null && minutesSinceWeeklySuccess <= weeklySuccessFreshnessMinutes;
+
+    const failureRatioLast24h =
+      deliveriesLast24h > 0
+        ? failedDeliveriesLast24h / deliveriesLast24h
+        : 0;
+
+    const emailDeliveryHealthy = failureRatioLast24h < 0.8;
+
+    const ignoredDeliveriesLast24h = Math.max(allDeliveriesLast24h - deliveriesLast24h, 0);
+    const ignoredFailedDeliveriesLast24h = Math.max(allFailedDeliveriesLast24h - failedDeliveriesLast24h, 0);
+
+    const dailySubscriberRows = await Subscriber.findAll({
+      where: {
+        isVerified: true,
+        isActive: true,
+        frequency: 'daily'
+      },
+      attributes: ['email'],
+      raw: true
+    }) as Array<{ email: string }>;
+
+    const exclusionRegexes = excludedEmailPatterns.map(sqlLikeToRegex);
+    const scopedDailyEmails = dailySubscriberRows
+      .map((row) => row.email.toLowerCase())
+      .filter((email) => !exclusionRegexes.some((regex) => regex.test(email)));
+
+    const successRows = scopedDailyEmails.length > 0
+      ? await NewsletterDeliveryLog.findAll({
+          attributes: [
+            'email',
+            [
+              NewsletterDeliveryLog.sequelize!.fn('MAX', NewsletterDeliveryLog.sequelize!.col('deliveredAt')),
+              'lastSuccessAt'
+            ]
+          ],
+          where: {
+            triggerType: 'scheduled',
+            frequency: 'daily',
+            success: true,
+            email: { [Op.in]: scopedDailyEmails }
+          },
+          group: ['email'],
+          raw: true
+        }) as unknown as Array<{ email: string; lastSuccessAt: string | null }>
+      : [];
+
+    const successByEmail = new Map<string, Date>();
+    for (const row of successRows) {
+      if (!row.lastSuccessAt) {
+        continue;
+      }
+      successByEmail.set(String(row.email).toLowerCase(), new Date(row.lastSuccessAt));
+    }
+
+    const recentSuccessCutoff = new Date(Date.now() - (realRecipientLookbackHours * 60 * 60 * 1000));
+    const impactedDailyRecipients = scopedDailyEmails
+      .map((email) => {
+        const lastSuccessAt = successByEmail.get(email) || null;
+        return {
+          email,
+          lastSuccessAt: lastSuccessAt ? lastSuccessAt.toISOString() : null
+        };
+      })
+      .filter((row) => !row.lastSuccessAt || new Date(row.lastSuccessAt).getTime() < recentSuccessCutoff.getTime())
+      .sort((a, b) => {
+        if (!a.lastSuccessAt && !b.lastSuccessAt) {
+          return a.email.localeCompare(b.email);
+        }
+        if (!a.lastSuccessAt) {
+          return -1;
+        }
+        if (!b.lastSuccessAt) {
+          return 1;
+        }
+        return new Date(a.lastSuccessAt).getTime() - new Date(b.lastSuccessAt).getTime();
+      });
+
+    const services = [
+      {
+        id: 'api',
+        label: 'API Service',
+        up: true,
+        detail: 'API endpoint responded and monitor status computed'
+      },
+      {
+        id: 'database',
+        label: 'Database',
+        up: true,
+        detail: 'Database queries completed successfully'
+      },
+      {
+        id: 'aggregation',
+        label: 'News Aggregation Pipeline',
+        up: healthy,
+        detail: healthy
+          ? `Latest article ${minutesSinceLatestArticle} minute(s) ago`
+          : `No fresh article within ${staleThresholdMinutes} minute threshold`
+      },
+      {
+        id: 'daily-workflow',
+        label: 'Daily Newsletter Workflow',
+        up: dailyWorkflowHealthy,
+        detail: dailySubscribers === 0
+          ? 'No verified active daily subscribers'
+          : (minutesSinceDailySuccess === null
+              ? 'No successful daily delivery recorded yet'
+              : `Last successful daily delivery ${minutesSinceDailySuccess} minute(s) ago`)
+      },
+      {
+        id: 'weekly-workflow',
+        label: 'Weekly Newsletter Workflow',
+        up: weeklyWorkflowHealthy,
+        detail: weeklySubscribers === 0
+          ? 'No verified active weekly subscribers'
+          : (minutesSinceWeeklySuccess === null
+              ? 'No successful weekly delivery recorded yet'
+              : `Last successful weekly delivery ${minutesSinceWeeklySuccess} minute(s) ago`)
+      },
+      {
+        id: 'email-delivery',
+        label: 'Email Delivery Health',
+        up: emailDeliveryHealthy,
+        detail: deliveriesLast24h === 0
+          ? 'No scheduled deliveries in the last 24 hours'
+          : `${failedDeliveriesLast24h}/${deliveriesLast24h} scheduled deliveries failed in last 24 hours (impacted daily recipients: ${impactedDailyRecipients.length})`
+      }
+    ];
+
+    const overallUp = services.every(service => service.up);
+
     res.status(200).json({
+      overallUp,
+      services,
       healthy,
       staleThresholdMinutes,
       latestArticle: latestArticle
@@ -588,6 +1161,47 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         daily: dailySubscribers,
         weekly: weeklySubscribers
       },
+      workflows: {
+        daily: {
+          up: dailyWorkflowHealthy,
+          minutesSinceLastSuccess: minutesSinceDailySuccess,
+          subscriberCount: dailySubscribers
+        },
+        weekly: {
+          up: weeklyWorkflowHealthy,
+          minutesSinceLastSuccess: minutesSinceWeeklySuccess,
+          subscriberCount: weeklySubscribers
+        }
+      },
+      deliveryHealth: {
+        excludedEmailPatterns,
+        deliveriesLast24h,
+        failedDeliveriesLast24h,
+        failureRatioLast24h,
+        allDeliveriesLast24h,
+        allFailedDeliveriesLast24h,
+        ignoredDeliveriesLast24h,
+        ignoredFailedDeliveriesLast24h
+      },
+      realRecipientRisk: {
+        lookbackHours: realRecipientLookbackHours,
+        impactedDailyRecipientsCount: impactedDailyRecipients.length,
+        recipientsWithoutRecentSuccess: impactedDailyRecipients.slice(0, Math.max(realRecipientListLimit, 0))
+      },
+      runTimeline,
+      deliveryOutcome: {
+        attemptFailureRateLast24h: failureRatioLast24h,
+        finalOutcomeSuccessRateLast24h,
+        recipientsWithAnyAttempt,
+        recipientsWithFinalSuccess,
+        recipientsWithoutFinalSuccess
+      },
+      failureTrends: {
+        currentWindowHours: 24,
+        previousWindowHours: 24,
+        topFailureReasons
+      },
+      domainHealth,
       checkedAt: new Date().toISOString()
     });
   } catch (error) {

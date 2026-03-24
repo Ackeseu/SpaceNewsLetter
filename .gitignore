@@ -41,6 +41,13 @@ azure-logs*
 deploy*.zip
 azure-functions/dist/
 functionapp.zip
+.deploy/
+release/
+deploy-runtime-*/
+api-logs*.zip
+func-logs*.zip
+webapp_logs*.zip
+*-hotfix.zip
 
 # Test coverage
 coverage/
@@ -49,3 +56,4 @@ coverage/
 # Temp files
 tmp/
 temp/
+tmp-*.js

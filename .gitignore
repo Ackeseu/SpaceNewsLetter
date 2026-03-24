@@ -48,6 +48,7 @@ api-logs*.zip
 func-logs*.zip
 webapp_logs*.zip
 *-hotfix.zip
+release*.zip
 
 # Test coverage
 coverage/

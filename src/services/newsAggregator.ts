@@ -1,6 +1,5 @@
 import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
-import crypto from 'crypto';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
@@ -10,7 +9,79 @@ interface RSSFeed {
   source: string;
   category: string[];
   region?: string;
+  requiredKeywords?: string[];
 }
+
+const parseBooleanEnv = (value?: string): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+};
+
+const STRICT_SOURCE_MODE = parseBooleanEnv(process.env.STRICT_SOURCE_MODE);
+
+const GOOGLE_NEWS_QUERY_NEWSPACE_TERMS = [
+  'newspace',
+  'space startup',
+  'space economy',
+  'commercial space',
+  'satellite',
+  'aerospace',
+  'low-altitude economy',
+  'orbit',
+  'launch'
+];
+
+const isGoogleNewsAggregatorFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): boolean => {
+  const source = feed.source.toLowerCase();
+  const url = feed.url.toLowerCase();
+
+  return source.includes('google news') || url.includes('news.google.com/rss/search');
+};
+
+const isCurrentYearGoogleNewsItem = (feed: Pick<RSSFeed, 'url' | 'source'>, pubDate?: string): boolean => {
+  if (!isGoogleNewsAggregatorFeed(feed)) {
+    return true;
+  }
+
+  if (!pubDate) {
+    return false;
+  }
+
+  const parsed = new Date(pubDate);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return parsed.getFullYear() === new Date().getFullYear();
+};
+
+const isCuratedGooglePublisherFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): boolean => {
+  if (!isGoogleNewsAggregatorFeed(feed)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(feed.url);
+    const query = decodeURIComponent((parsed.searchParams.get('q') || '').toLowerCase());
+    const hasSiteFilter = query.includes('site:');
+    const hasNewSpaceTerm = GOOGLE_NEWS_QUERY_NEWSPACE_TERMS.some((term) => query.includes(term));
+
+    return hasSiteFilter && hasNewSpaceTerm;
+  } catch {
+    return false;
+  }
+};
+
+const isStrictAllowedSource = (feed: Pick<RSSFeed, 'url' | 'source'>): boolean => {
+  if (isGoogleNewsAggregatorFeed(feed)) {
+    return isCuratedGooglePublisherFeed(feed);
+  }
+
+  return true;
+};
 
 export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
   // International Space Business News
@@ -35,6 +106,13 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
     category: ['space', 'news']
   },
   {
+    url: 'http://rthk9.rthk.hk/rthk/news/rss/e_expressnews.xml',
+    source: 'RTHK Express News',
+    category: ['space', 'hong-kong', 'news'],
+    region: 'hong-kong',
+    requiredKeywords: ['space', 'satellite', 'aerospace', 'rocket', 'orbit', 'newspace', 'low-altitude economy']
+  },
+  {
     url: 'https://spaceflightnow.com/feed/',
     source: 'Spaceflight Now',
     category: ['space', 'launches', 'business']
@@ -43,8 +121,50 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
   {
     url: 'https://www.spacedaily.com/dragonspace.html',
     source: 'Space Daily - Dragon Space (Asia)',
-    category: ['space', 'asia', 'business', 'news'],
+    category: ['space', 'asia', 'business', 'news', 'hong-kong'],
     region: 'asia'
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=newspace+hong+kong&hl=en-HK&gl=HK&ceid=HK:en',
+    source: 'Google News - NewSpace Hong Kong',
+    category: ['space', 'newspace', 'hong-kong', 'business'],
+    region: 'hong-kong',
+    requiredKeywords: ['newspace', 'space startup', 'space economy', 'commercial space', 'satellite', 'aerospace']
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=%22hong+kong%22+satellite&hl=en-HK&gl=HK&ceid=HK:en',
+    source: 'Google News - Hong Kong Satellite',
+    category: ['space', 'satellite', 'hong-kong', 'business'],
+    region: 'hong-kong',
+    requiredKeywords: ['satellite', 'space', 'orbit', 'aerospace', 'payload', 'launch']
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=%22low+altitude+economy%22+hong+kong&hl=en-HK&gl=HK&ceid=HK:en',
+    source: 'Google News - HK Low Altitude Economy',
+    category: ['space', 'newspace', 'hong-kong', 'business', 'low-altitude-economy'],
+    region: 'hong-kong',
+    requiredKeywords: ['low-altitude economy', 'drone', 'uav', 'uas', 'aerospace', 'airspace']
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Ascmp.com+%22hong+kong%22&hl=en-HK&gl=HK&ceid=HK:en',
+    source: 'Google News - SCMP HK NewSpace',
+    category: ['space', 'newspace', 'hong-kong', 'business', 'publisher'],
+    region: 'hong-kong',
+    requiredKeywords: ['newspace', 'space economy', 'satellite', 'aerospace', 'space startup', 'orbit', 'launch']
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Athestandard.com.hk+%22hong+kong%22&hl=en-HK&gl=HK&ceid=HK:en',
+    source: 'Google News - The Standard HK NewSpace',
+    category: ['space', 'newspace', 'hong-kong', 'business', 'publisher'],
+    region: 'hong-kong',
+    requiredKeywords: ['newspace', 'space economy', 'satellite', 'aerospace', 'space startup', 'orbit', 'launch']
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Arthk.hk+%22hong+kong%22&hl=en-HK&gl=HK&ceid=HK:en',
+    source: 'Google News - RTHK HK NewSpace',
+    category: ['space', 'newspace', 'hong-kong', 'business', 'publisher'],
+    region: 'hong-kong',
+    requiredKeywords: ['newspace', 'space economy', 'satellite', 'aerospace', 'space startup', 'orbit', 'launch']
   },
   // China Space News Sources
   {
@@ -72,14 +192,21 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
   }
 ];
 
+const getDefaultRequiredKeywordsForFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): string[] | undefined => {
+  const matchingDefault = DEFAULT_RSS_FEEDS.find((defaultFeed) => (
+    defaultFeed.url === feed.url || defaultFeed.source === feed.source
+  ));
+
+  return matchingDefault?.requiredKeywords;
+};
+
 export const seedDefaultSourcesIfEmpty = async (): Promise<void> => {
-  const sourceCount = await NewsSource.count();
-  if (sourceCount > 0) {
-    return;
-  }
+  const feedsToSeed = STRICT_SOURCE_MODE
+    ? DEFAULT_RSS_FEEDS.filter(isStrictAllowedSource)
+    : DEFAULT_RSS_FEEDS;
 
   await NewsSource.bulkCreate(
-    DEFAULT_RSS_FEEDS.map((feed) => ({
+    feedsToSeed.map((feed) => ({
       url: feed.url,
       source: feed.source,
       category: feed.category,
@@ -99,15 +226,43 @@ const getConfiguredFeeds = async (): Promise<RSSFeed[]> => {
   });
 
   if (configuredFeeds.length > 0) {
-    return configuredFeeds.map((feed) => ({
+    const mappedFeeds = configuredFeeds.map((feed) => ({
       url: feed.url,
       source: feed.source,
       category: feed.category,
-      region: feed.region || undefined
+      region: feed.region || undefined,
+      requiredKeywords: getDefaultRequiredKeywordsForFeed({
+        url: feed.url,
+        source: feed.source
+      })
     }));
+
+    if (!STRICT_SOURCE_MODE) {
+      return mappedFeeds;
+    }
+
+    const filteredFeeds = mappedFeeds.filter(isStrictAllowedSource);
+    const excludedCount = mappedFeeds.length - filteredFeeds.length;
+
+    if (excludedCount > 0) {
+      console.log(`Strict source mode enabled: excluded ${excludedCount} aggregator source(s).`);
+    }
+
+    return filteredFeeds;
   }
 
-  return DEFAULT_RSS_FEEDS;
+  if (!STRICT_SOURCE_MODE) {
+    return DEFAULT_RSS_FEEDS;
+  }
+
+  const strictDefaults = DEFAULT_RSS_FEEDS.filter(isStrictAllowedSource);
+  const excludedCount = DEFAULT_RSS_FEEDS.length - strictDefaults.length;
+
+  if (excludedCount > 0) {
+    console.log(`Strict source mode enabled: excluded ${excludedCount} default aggregator source(s).`);
+  }
+
+  return strictDefaults;
 };
 
 const parser = new Parser({
@@ -141,8 +296,24 @@ const HONG_KONG_KEYWORDS = [
   'hong kong aerospace', 'hong kong technology'
 ];
 
+const HONG_KONG_LOCATION_KEYWORDS = [
+  'hksar', 'hong kong sar', 'cyberport', 'science park', 'hong kong science park',
+  'hkust', 'university of hong kong', 'hku', 'polyu', 'cuhk'
+];
+
+const NEWSPACE_KEYWORDS = [
+  'newspace', 'space startup', 'space economy', 'low-altitude economy',
+  'commercial space', 'satellite startup', 'earth observation', 'smallsat',
+  'microsatellite', 'space commercialization', 'space venture'
+];
+
 const ASIA_KEYWORDS = [
   'asia', 'asian', 'china', 'japan', 'korea', 'singapore', 'india', 'hong kong', 'hongkong'
+];
+
+const SPACE_CORE_KEYWORDS = [
+  'space', 'satellite', 'orbit', 'orbital', 'rocket', 'launch', 'aerospace',
+  'payload', 'constellation', 'earth observation', 'remote sensing', 'navigation'
 ];
 
 const OASA_EVENTS_URL = 'https://www.oasahk.org/events';
@@ -156,29 +327,259 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'secure your spot'
 ];
 
-const AI_TITLE_IMAGES_ENABLED = (process.env.AI_TITLE_IMAGES_ENABLED || 'false').toLowerCase() === 'true';
+const isGeneratedOrNonRenderableImageUrl = (imageUrl?: string): boolean => {
+  if (!imageUrl) {
+    return true;
+  }
 
-const buildAiTitleImageUrl = (title: string): string => {
-  const cleaned = title.replace(/\s+/g, ' ').trim() || 'Space Update';
-  const clippedTitle = cleaned.slice(0, 140);
-  const prompt = `space news illustration cinematic inspired by: ${clippedTitle}, no text, no logos`;
-  const seed = crypto.createHash('sha256').update(cleaned.toLowerCase()).digest('hex').slice(0, 12);
-  const encodedPrompt = encodeURIComponent(prompt);
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=640&height=360&nologo=true&seed=${seed}`;
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    return true;
+  }
+
+  return /image\.pollinations\.ai\/prompt\//i.test(imageUrl)
+    || imageUrl.startsWith('local-themed://');
 };
 
-const resolveArticleImageUrl = (title: string, sourceImageUrl?: string): string | undefined => {
+const resolveArticleImageUrl = (_title: string, sourceImageUrl?: string): string | undefined => {
   if (sourceImageUrl && /^https?:\/\//i.test(sourceImageUrl)) {
     return sourceImageUrl;
   }
 
-  // Prefer text-only cards when no real source image exists.
-  // AI-generated title images are intentionally disabled by default.
-  if (!AI_TITLE_IMAGES_ENABLED) {
-    return undefined;
+  return undefined;
+};
+
+const extractSourceImageUrlFromRssItem = (
+  item: any,
+  baseUrl?: string
+): string | undefined => {
+  const candidates: string[] = [];
+
+  if (item?.enclosure?.url) {
+    candidates.push(String(item.enclosure.url));
   }
 
-  return buildAiTitleImageUrl(title);
+  const mediaContent = item?.mediaContent;
+  if (mediaContent?.$?.url) {
+    candidates.push(String(mediaContent.$.url));
+  }
+
+  const mediaThumbnail = item?.mediaThumbnail;
+  if (mediaThumbnail?.$?.url) {
+    candidates.push(String(mediaThumbnail.$.url));
+  }
+
+  const imageField = item?.image;
+  if (typeof imageField === 'string') {
+    candidates.push(imageField);
+  } else if (imageField?.url) {
+    candidates.push(String(imageField.url));
+  }
+
+  const htmlFields = [
+    item?.content,
+    item?.summary,
+    item?.['content:encoded']
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  for (const html of htmlFields) {
+    try {
+      const $ = cheerio.load(html);
+      $('img').each((_, imageElement) => {
+        const node = $(imageElement);
+        const attrs = [
+          node.attr('src'),
+          node.attr('data-src'),
+          node.attr('data-lazy-src'),
+          node.attr('srcset'),
+          node.attr('data-srcset')
+        ];
+
+        for (const attr of attrs) {
+          if (attr) {
+            candidates.push(attr);
+          }
+        }
+      });
+    } catch {
+      // ignore malformed HTML fragments
+    }
+  }
+
+  const resolvedBase = baseUrl || item?.link || undefined;
+  for (const candidate of candidates) {
+    const resolved = resolveAbsoluteUrl(candidate, resolvedBase);
+    if (resolved && !isGeneratedOrNonRenderableImageUrl(resolved)) {
+      return resolved;
+    }
+  }
+
+  return undefined;
+};
+
+const isLikelyArticleImageUrl = (imageUrl?: string): boolean => {
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+    return false;
+  }
+
+  if (isGeneratedOrNonRenderableImageUrl(imageUrl)) {
+    return false;
+  }
+
+  const lower = imageUrl.toLowerCase();
+  if (
+    lower.includes('logo')
+    || lower.includes('favicon')
+    || lower.includes('sprite')
+    || lower.includes('icon')
+    || lower.includes('avatar')
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const fetchArticleDetailImageUrl = async (
+  fetchImpl: typeof import('node-fetch').default,
+  articleUrl: string
+): Promise<string | undefined> => {
+  try {
+    const response = await fetchImpl(articleUrl);
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const metaCandidates = [
+      $('meta[property="og:image"]').attr('content'),
+      $('meta[property="og:image:url"]').attr('content'),
+      $('meta[name="twitter:image"]').attr('content'),
+      $('meta[name="twitter:image:src"]').attr('content'),
+      $('link[rel="image_src"]').attr('href')
+    ];
+
+    for (const candidate of metaCandidates) {
+      const resolved = resolveAbsoluteUrl(candidate, articleUrl);
+      if (resolved && isLikelyArticleImageUrl(resolved)) {
+        return resolved;
+      }
+    }
+
+    const imageCandidates = $('img').toArray().flatMap((node) => {
+      const image = $(node);
+      return [
+        image.attr('src'),
+        image.attr('data-src'),
+        image.attr('data-lazy-src'),
+        image.attr('srcset'),
+        image.attr('data-srcset')
+      ];
+    });
+
+    for (const candidate of imageCandidates) {
+      const resolved = resolveAbsoluteUrl(candidate, articleUrl);
+      if (resolved && isLikelyArticleImageUrl(resolved)) {
+        return resolved;
+      }
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const hasAnyKeyword = (text: string, keywords: string[]): boolean => {
+  return keywords.some((keyword) => text.includes(keyword));
+};
+
+const passesFeedKeywordGate = (
+  title: string,
+  description: string,
+  feedConfig: RSSFeed
+): boolean => {
+  const text = `${title} ${description}`.toLowerCase();
+
+  const hasRequiredKeywords = (() => {
+    if (!feedConfig.requiredKeywords || feedConfig.requiredKeywords.length === 0) {
+      return true;
+    }
+
+    const requiredKeywords = feedConfig.requiredKeywords.map((keyword) => keyword.toLowerCase());
+    return hasAnyKeyword(text, requiredKeywords);
+  })();
+
+  if (!hasRequiredKeywords) {
+    return false;
+  }
+
+  const isCuratedPublisherSource =
+    isGoogleNewsAggregatorFeed(feedConfig)
+    && isCuratedGooglePublisherFeed(feedConfig)
+    && feedConfig.source.toLowerCase().includes('hk newspace');
+
+  if (!isCuratedPublisherSource) {
+    return true;
+  }
+
+  const hasNewSpaceIntent = hasAnyKeyword(text, NEWSPACE_KEYWORDS);
+  const hasSpaceCoreSignal = hasAnyKeyword(text, SPACE_CORE_KEYWORDS);
+
+  return hasNewSpaceIntent && hasSpaceCoreSignal;
+};
+
+const isHongKongFocusedNewSpaceArticle = (
+  title: string,
+  description: string,
+  metadata?: {
+    source?: string;
+    category?: string[];
+    region?: string;
+    link?: string;
+  }
+): boolean => {
+  const text = `${title} ${description}`.toLowerCase();
+  const source = (metadata?.source || '').toLowerCase();
+  const region = (metadata?.region || '').toLowerCase();
+  const link = (metadata?.link || '').toLowerCase();
+  const category = (metadata?.category || []).map((value) => value.toLowerCase());
+
+  const isOasaEvent =
+    source.includes('oasa')
+    || category.includes('oasa')
+    || (category.includes('events') && link.includes('oasahk.org'))
+    || link.includes('oasahk.org/event');
+
+  if (isOasaEvent) {
+    return true;
+  }
+
+  const hasHongKongSignal =
+    hasAnyKeyword(text, HONG_KONG_KEYWORDS)
+    || hasAnyKeyword(text, HONG_KONG_LOCATION_KEYWORDS)
+    || ['hong-kong', 'hongkong', 'hk'].includes(region)
+    || category.some((value) => ['hong-kong', 'hongkong', 'hk'].includes(value))
+    || source.includes('hong kong')
+    || link.includes('hongkong')
+    || link.includes('hong-kong')
+    || link.includes('.hk/');
+
+  if (!hasHongKongSignal) {
+    return false;
+  }
+
+  const hasSpaceSignal =
+    hasAnyKeyword(text, SPACE_CORE_KEYWORDS)
+    || hasAnyKeyword(text, SPACE_TECH_KEYWORDS)
+    || category.some((value) => ['space', 'satellite', 'aerospace', 'technology', 'tech'].includes(value));
+
+  const hasNewSpaceSignal =
+    hasAnyKeyword(text, NEWSPACE_KEYWORDS)
+    || category.some((value) => ['business', 'startup', 'economy', 'commercial'].includes(value));
+
+  return hasSpaceSignal && hasNewSpaceSignal;
 };
 
 function calculateArticlePriority(
@@ -199,9 +600,20 @@ function calculateArticlePriority(
 
   const businessMatches = BUSINESS_KEYWORDS.filter((keyword) => text.includes(keyword)).length;
   const techMatches = SPACE_TECH_KEYWORDS.filter((keyword) => text.includes(keyword)).length;
+  const newSpaceMatches = NEWSPACE_KEYWORDS.filter((keyword) => text.includes(keyword)).length;
 
   const isBusiness = businessMatches > 0 || category.includes('business');
   const isTechnology = techMatches > 0 || category.includes('technology') || category.includes('tech');
+  const isNewSpace = newSpaceMatches > 0 || category.some((value) => ['startup', 'commercial', 'economy'].includes(value));
+  const isHongKongRelated =
+    ['hong-kong', 'hongkong', 'hk'].includes(region)
+    || category.some((value) => ['hong-kong', 'hongkong', 'hk'].includes(value))
+    || HONG_KONG_KEYWORDS.some((keyword) => text.includes(keyword))
+    || HONG_KONG_LOCATION_KEYWORDS.some((keyword) => text.includes(keyword))
+    || source.includes('hong kong')
+    || link.includes('hongkong')
+    || link.includes('hong-kong')
+    || link.includes('.hk/');
   const isAsiaRelated =
     ['asia', 'china', 'hong-kong', 'hk'].includes(region)
     || category.some((value) => ['asia', 'china', 'hong-kong'].includes(value))
@@ -224,6 +636,14 @@ function calculateArticlePriority(
     return 500 + businessMatches + techMatches;
   }
 
+  if (isHongKongRelated && isNewSpace && isBusiness) {
+    return 470 + businessMatches + techMatches + newSpaceMatches;
+  }
+
+  if (isHongKongRelated && (isNewSpace || isTechnology)) {
+    return 440 + businessMatches + techMatches + newSpaceMatches;
+  }
+
   if (isAsiaRelated && isBusiness) {
     return 400 + businessMatches;
   }
@@ -240,6 +660,189 @@ function calculateArticlePriority(
 }
 
 const normalizeText = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const resolveAbsoluteUrl = (rawUrl?: string, baseUrl = OASA_EVENTS_URL): string | undefined => {
+  if (!rawUrl) {
+    return undefined;
+  }
+
+  const normalized = rawUrl.trim();
+  if (!normalized || normalized.startsWith('data:')) {
+    return undefined;
+  }
+
+  const [firstFromSet] = normalized.split(',').map((part) => part.trim()).filter(Boolean);
+  const candidate = (firstFromSet || normalized).split(/\s+/)[0];
+  if (!candidate) {
+    return undefined;
+  }
+
+  try {
+    return new URL(candidate, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+};
+
+const extractWixWidth = (imageUrl: string): number | undefined => {
+  const widthMatch = imageUrl.match(/\/w_(\d+)/i);
+  if (!widthMatch) {
+    return undefined;
+  }
+
+  const parsed = Number(widthMatch[1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
+const isLikelyOasaEventImageUrl = (imageUrl?: string): boolean => {
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+    return false;
+  }
+
+  const lower = imageUrl.toLowerCase();
+  if (lower.includes('oasa_logo') || lower.includes('/logo') || lower.includes('favicon')) {
+    return false;
+  }
+
+  const width = extractWixWidth(imageUrl);
+  if (typeof width === 'number' && width < 220) {
+    return false;
+  }
+
+  return true;
+};
+
+const isLowQualityOasaImageUrl = (imageUrl?: string): boolean => {
+  if (!imageUrl) {
+    return true;
+  }
+
+  const lower = imageUrl.toLowerCase();
+  if (lower.includes('oasa_logo') || lower.includes('/logo') || lower.includes('favicon')) {
+    return true;
+  }
+
+  const width = extractWixWidth(imageUrl);
+  return typeof width === 'number' && width < 220;
+};
+
+const extractImageUrlFromElement = (
+  $: cheerio.CheerioAPI,
+  element: any,
+  baseUrl = OASA_EVENTS_URL
+): string | undefined => {
+  const imageCandidates: string[] = [];
+  const selectors = [
+    $(element),
+    $(element).closest('article, li, section, div'),
+    $(element).parent(),
+    $(element).parents().slice(0, 5)
+  ];
+
+  for (const scope of selectors) {
+    const images = [
+      ...scope.find('img').toArray(),
+      ...scope.prevAll('img').slice(0, 3).toArray(),
+      ...scope.nextAll('img').slice(0, 3).toArray()
+    ];
+
+    if (images.length === 0) {
+      continue;
+    }
+
+    const attrs = [
+      'src',
+      'data-src',
+      'data-lazy-src',
+      'data-original',
+      'data-image',
+      'data-wpfc-original-src',
+      'srcset',
+      'data-srcset'
+    ];
+
+    for (const imageNode of images) {
+      const imageEl = $(imageNode);
+      for (const attr of attrs) {
+        const value = imageEl.attr(attr);
+        if (value) {
+          imageCandidates.push(value);
+        }
+      }
+    }
+  }
+
+  for (const candidate of imageCandidates) {
+    const resolved = resolveAbsoluteUrl(candidate, baseUrl);
+    if (resolved && isLikelyOasaEventImageUrl(resolved)) {
+      return resolved;
+    }
+  }
+
+  return undefined;
+};
+
+const fetchEventDetailImageUrl = async (
+  fetchImpl: typeof import('node-fetch').default,
+  eventUrl: string
+): Promise<string | undefined> => {
+  try {
+    const response = await fetchImpl(eventUrl);
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const metaCandidates = [
+      $('meta[property="og:image"]').attr('content'),
+      $('meta[name="twitter:image"]').attr('content'),
+      $('meta[property="og:image:url"]').attr('content'),
+      $('link[rel="image_src"]').attr('href')
+    ];
+
+    for (const candidate of metaCandidates) {
+      const resolved = resolveAbsoluteUrl(candidate, eventUrl);
+      if (resolved && isLikelyOasaEventImageUrl(resolved)) {
+        return resolved;
+      }
+    }
+
+    const allDetailImages = $('img').toArray()
+      .flatMap((img) => {
+        const node = $(img);
+        return [
+          node.attr('src'),
+          node.attr('data-src'),
+          node.attr('data-lazy-src'),
+          node.attr('srcset'),
+          node.attr('data-srcset')
+        ];
+      })
+      .map((value) => resolveAbsoluteUrl(value, eventUrl))
+      .filter((value): value is string => Boolean(value))
+      .filter((value) => isLikelyOasaEventImageUrl(value));
+
+    const ranked = allDetailImages.sort((a, b) => {
+      const aw = extractWixWidth(a) || 0;
+      const bw = extractWixWidth(b) || 0;
+      return bw - aw;
+    });
+
+    if (ranked.length > 0) {
+      return ranked[0];
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const extractEventDate = (text: string): Date | undefined => {
   const match = text.match(/([A-Z][a-z]{2}\s\d{1,2},\s\d{4})/);
@@ -305,18 +908,18 @@ const fetchOasaEvents = async (): Promise<number> => {
 
       const containerText = normalizeText($(element).parent().text());
       const pubDate = extractEventDate(containerText);
-      let description = containerText.replace(titleText, '').trim();
+      let description = normalizeText(containerText.replace(titleText, '').trim());
       if (description.length < 20) {
         description = 'OASA event details and schedule are available on the event page.';
       }
-      description = trimTextForEmail(description, 420);
+      description = trimTextForEmail(description, 1200);
 
-      const imageUrl = $(element).closest('div').find('img').first().attr('src');
+      const resolvedImageUrl = extractImageUrlFromElement($, element, OASA_EVENTS_URL);
 
       eventLinks.set(link, {
         title: titleText,
         description,
-        imageUrl: imageUrl && imageUrl.startsWith('http') ? imageUrl : undefined,
+        imageUrl: resolvedImageUrl,
         pubDate
       });
     });
@@ -327,8 +930,18 @@ const fetchOasaEvents = async (): Promise<number> => {
     }
 
     for (const [link, event] of eventLinks.entries()) {
+      const eventImageUrl = event.imageUrl || await fetchEventDetailImageUrl(fetch, link);
+
       const existingArticle = await Article.findOne({ where: { link } });
       if (existingArticle) {
+        const shouldReplaceExistingImage =
+          isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)
+          || isLowQualityOasaImageUrl(existingArticle.imageUrl || undefined);
+
+        if (eventImageUrl && shouldReplaceExistingImage) {
+          existingArticle.imageUrl = eventImageUrl;
+          await existingArticle.save();
+        }
         continue;
       }
 
@@ -339,7 +952,7 @@ const fetchOasaEvents = async (): Promise<number> => {
         pubDate: event.pubDate || new Date(),
         source: OASA_EVENTS_SOURCE,
         category: OASA_EVENTS_CATEGORY,
-        imageUrl: resolveArticleImageUrl(event.title, event.imageUrl),
+        imageUrl: resolveArticleImageUrl(event.title, eventImageUrl),
         isFeatured: false,
         priority: calculateArticlePriority(event.title, event.description, {
           source: OASA_EVENTS_SOURCE,
@@ -368,18 +981,59 @@ export const aggregateNews = async (): Promise<number> => {
     try {
       console.log(`Fetching articles from ${feedConfig.source}...`);
       const feed = await parser.parseURL(feedConfig.url);
+      let fetchImpl: typeof import('node-fetch').default | null = null;
       let sourceArticleCount = 0;
 
       for (const item of feed.items) {
         if (sourceArticleCount >= MAX_ARTICLES_PER_SOURCE) break;
 
         try {
-          // Check if article already exists
-          const existingArticle = await Article.findOne({ where: { link: item.link || '' } });
-          if (existingArticle) continue;
-
           const title = item.title || 'Untitled';
           const rawDescription = item.contentSnippet || item.content || '';
+
+          if (!passesFeedKeywordGate(title, rawDescription, feedConfig)) {
+            continue;
+          }
+
+          if (!isHongKongFocusedNewSpaceArticle(title, rawDescription, {
+            source: feedConfig.source,
+            category: feedConfig.category,
+            region: feedConfig.region,
+            link: item.link || ''
+          })) {
+            continue;
+          }
+
+          if (!isCurrentYearGoogleNewsItem(feedConfig, item.pubDate)) {
+            continue;
+          }
+
+          // Extract source image URL early so existing records can be upgraded.
+          let sourceImageUrl = extractSourceImageUrlFromRssItem(item, item.link || feedConfig.url);
+          if (!sourceImageUrl && item.link) {
+            if (!fetchImpl) {
+              fetchImpl = (await import('node-fetch')).default;
+            }
+
+            sourceImageUrl = await fetchArticleDetailImageUrl(fetchImpl, item.link);
+          }
+
+          const existingArticle = await Article.findOne({ where: { link: item.link || '' } });
+          if (existingArticle) {
+            if (
+              sourceImageUrl
+              && (
+                !existingArticle.imageUrl
+                || isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)
+              )
+            ) {
+              existingArticle.imageUrl = sourceImageUrl;
+              await existingArticle.save();
+            }
+            continue;
+          }
+
+          // Check if article already exists
           const description = buildArticleSummary(title, rawDescription);
 
           // Calculate priority score
@@ -391,16 +1045,6 @@ export const aggregateNews = async (): Promise<number> => {
           });
 
           const isTopPriorityArticle = priority >= 500;
-
-          // Extract image URL
-          let sourceImageUrl: string | undefined;
-          if (item.enclosure?.url) {
-            sourceImageUrl = item.enclosure.url;
-          } else if ((item as any).mediaContent) {
-            sourceImageUrl = (item as any).mediaContent.$.url;
-          } else if ((item as any).mediaThumbnail) {
-            sourceImageUrl = (item as any).mediaThumbnail.$.url;
-          }
 
           const imageUrl = resolveArticleImageUrl(title, sourceImageUrl);
 
@@ -445,7 +1089,9 @@ export const aggregateNews = async (): Promise<number> => {
   return articlesAdded;
 };
 
-export const fetchNewsAPI = async (query: string = 'space exploration'): Promise<void> => {
+export const fetchNewsAPI = async (
+  query: string = 'newspace OR "space startup" OR satellite hong kong OR aerospace hong kong'
+): Promise<void> => {
   const apiKey = process.env.NEWS_API_KEY;
   if (!apiKey) {
     console.log('NewsAPI key not configured, skipping...');
@@ -464,7 +1110,13 @@ export const fetchNewsAPI = async (query: string = 'space exploration'): Promise
       for (const item of data.articles) {
         try {
           const existingArticle = await Article.findOne({ where: { link: item.url } });
-          if (existingArticle) continue;
+          if (existingArticle) {
+            if (item.urlToImage && isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)) {
+              existingArticle.imageUrl = item.urlToImage;
+              await existingArticle.save();
+            }
+            continue;
+          }
 
           await Article.create({
             title: item.title,

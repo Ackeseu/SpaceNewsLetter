@@ -114,6 +114,8 @@ NEWS_AGGREGATOR_TOKEN=your-aggregator-token
 NEWSLETTER_SENDER_TOKEN=your-sender-token
 MONITOR_TOKEN=your-monitor-token
 MONITOR_ALERT_EMAILS=ops@example.com,owner@example.com
+# Recommended for filtered/daily aggregation cadence (48h freshness window)
+MONITOR_MAX_STALE_MINUTES=2880
 
 # Optional: NewsAPI
 NEWS_API_KEY=your-newsapi-key
@@ -214,6 +216,7 @@ The API will be available at `http://localhost:3000`.
 - `GET /api/newsletters/monitor/status` - Pipeline health/status (requires `x-monitor-token`)
 - `POST /api/newsletters/monitor/alert` - Send monitor alert email (requires `x-monitor-token`)
 - `GET /api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD` - Recipient delivery logs (requires `x-monitor-token`)
+- `MONITOR_MAX_STALE_MINUTES` controls when aggregation is marked stale in monitor status (recommended: `2880` for filtered daily cadence)
 
 ### Health Check
 

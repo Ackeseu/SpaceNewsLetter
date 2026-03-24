@@ -10,7 +10,8 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "backfill:summaries": "ts-node backfill-summaries.ts",
-    "backfill:title-images": "ts-node backfill-title-images.ts"
+    "backfill:title-images": "ts-node backfill-title-images.ts",
+    "backfill:hk-focus": "ts-node backfill-hk-focus.ts"
   },
   "keywords": [
     "newsletter",

@@ -35,7 +35,7 @@ const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCas
 const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
 const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
 const imageCachePlaceholderTtlHours = Number(process.env.IMAGE_CACHE_PLACEHOLDER_TTL_HOURS || 6);
-const titleImageGenerationEnabled = (process.env.TITLE_IMAGE_GENERATION_ENABLED || 'false').toLowerCase() === 'true';
+const OASA_EVENTS_SOURCE = 'OASA Events';
 const aiImageProvider = (process.env.AI_IMAGE_PROVIDER || 'pollinations').toLowerCase();
 const openAiApiKey = process.env.OPENAI_API_KEY || '';
 const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
@@ -138,6 +138,17 @@ type CachedImagePayload = {
 const isAiTitleImageUrl = (imageUrl: string): boolean => /image\.pollinations\.ai\/prompt\//i.test(imageUrl);
 
 const isLocalThemedImageUrl = (imageUrl?: string): boolean => !!imageUrl && imageUrl.startsWith(LOCAL_THEMED_IMAGE_PREFIX);
+
+const normalizeImageUrlForFetch = (imageUrl: string): string => {
+  // Wix image transform URLs (/v1/fill/...) return 403 server-side; strip the transform path
+  // and use the raw media URL which is publicly accessible.
+  const wixMatch = imageUrl.match(/^(https:\/\/static\.wixstatic\.com\/media\/[^/]+)(\/v1\/|~mv[\d]+)/i);
+  if (wixMatch) {
+    return wixMatch[1];
+  }
+
+  return imageUrl;
+};
 
 const isRenderableSourceImageUrl = (imageUrl?: string): boolean => {
   if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
@@ -439,7 +450,7 @@ const buildInlineArticleAttachment = async (
   title: string,
   index: number,
   cid: string
-): Promise<EmailAttachment> => {
+): Promise<EmailAttachment | null> => {
   const cacheKey = getImageCacheKey(title);
   const isAiImage = isAiTitleImageUrl(imageUrl);
   const isLocalThemedImage = isLocalThemedImageUrl(imageUrl);
@@ -512,7 +523,8 @@ const buildInlineArticleAttachment = async (
   }
 
   try {
-    const response = await fetchWithTimeout(imageUrl, undefined, imageFetchTimeoutMs);
+    const fetchUrl = normalizeImageUrlForFetch(imageUrl);
+    const response = await fetchWithTimeout(fetchUrl, undefined, imageFetchTimeoutMs);
     if (!response.ok) {
       throw new Error(`Failed to download image: ${response.status}`);
     }
@@ -544,6 +556,12 @@ const buildInlineArticleAttachment = async (
       contentId: cid
     };
   } catch {
+    if (!isAiImage && !isLocalThemedImage) {
+      // Source image is unavailable — render article text-only rather than showing a broken/placeholder image.
+      console.warn(`Source image unavailable for article ${index + 1}: ${imageUrl}`);
+      return null;
+    }
+
     if (isAiImage) {
       console.warn(`AI image retrieval failed for article ${index + 1}; using placeholder fallback`);
     }
@@ -751,18 +769,17 @@ export const sendNewsletterEmail = async (
   for (let index = 0; index < articles.length; index += 1) {
     const article = articles[index];
     const rawImageUrl = article.imageUrl;
-    const allowGeneratedTitleImage = titleImageGenerationEnabled;
-    const hasSourceImage = isRenderableSourceImageUrl(rawImageUrl);
+    const normalizedImageUrl = String(rawImageUrl || '');
+    const hasAttachableImage = Boolean(rawImageUrl)
+      && isRenderableSourceImageUrl(normalizedImageUrl);
 
-    if (!hasSourceImage && !allowGeneratedTitleImage) {
+    if (!hasAttachableImage) {
       articleWithImageCids.push({ article, hasImage: false });
       continue;
     }
 
     const cid = `article-image-${index + 1}`;
-    const imageUrl = hasSourceImage
-      ? String(rawImageUrl)
-      : buildLocalThemedImageUrl(article.title || 'Space update');
+    const imageUrl = normalizedImageUrl;
 
     const attachment = await buildInlineArticleAttachment(
       imageUrl,
@@ -770,6 +787,11 @@ export const sendNewsletterEmail = async (
       index,
       cid
     );
+
+    if (!attachment) {
+      articleWithImageCids.push({ article, hasImage: false });
+      continue;
+    }
 
     articleWithImageCids.push({
       article,
@@ -791,20 +813,34 @@ export const sendNewsletterEmail = async (
       .filter((attachment): attachment is EmailAttachment => Boolean(attachment))
   ];
 
-  const renderInlineArticleBlocks = (): string => articleWithImageCids.map(({ article, cid, hasImage }) => {
+  const oasaArticles = articleWithImageCids.filter(({ article }) => String(article?.source || '').trim() === OASA_EVENTS_SOURCE);
+  const sourceArticles = articleWithImageCids.filter(({ article }) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE);
+
+  const normalizeOasaDescription = (value: unknown): string => {
+    const raw = String(value || '').trim();
+    return raw.replace(/^\s*summary\s*:\s*/i, '').replace(/^\s*key\s*point\s*:\s*/i, '').trim();
+  };
+
+  const renderInlineArticleBlocks = (items: Array<{ article: any; cid?: string; hasImage: boolean }>, options?: { preserveOasaText?: boolean }): string => items.map(({ article, cid, hasImage }) => {
+    const description = options?.preserveOasaText && String(article?.source || '').trim() === OASA_EVENTS_SOURCE
+      ? normalizeOasaDescription(article.description)
+      : article.description;
     const titleClass = hasImage ? 'article-title-box' : 'article-title-box text-only';
     return `
           <div class="article">
             <div class="${titleClass}"><h3>${article.title}</h3></div>
             ${hasImage && cid ? `<img src="cid:${cid}" alt="${article.title}">` : ''}
-            <p>${article.description}</p>
+            <p>${description}</p>
             <p><a href="${article.link}" class="read-more">Read more →</a></p>
-            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString()}</p>
+            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
         `;
   }).join('');
 
-  const renderExternalArticleBlocks = (): string => articles.map((article) => {
+  const renderExternalArticleBlocks = (items: any[], options?: { preserveOasaText?: boolean }): string => items.map((article) => {
+    const description = options?.preserveOasaText && String(article?.source || '').trim() === OASA_EVENTS_SOURCE
+      ? normalizeOasaDescription(article.description)
+      : article.description;
     const hasExternalImage = isRenderableSourceImageUrl(article?.imageUrl);
     const titleClass = hasExternalImage ? 'article-title-box' : 'article-title-box text-only';
 
@@ -812,14 +848,25 @@ export const sendNewsletterEmail = async (
           <div class="article">
             <div class="${titleClass}"><h3>${article.title}</h3></div>
             ${hasExternalImage ? `<img src="${article.imageUrl}" alt="${article.title}">` : ''}
-            <p>${article.description}</p>
+            <p>${description}</p>
             <p><a href="${article.link}" class="read-more">Read more →</a></p>
-            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString()}</p>
+            <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
         `;
   }).join('');
 
-  const renderNewsletterHtml = (articleMarkup: string): string => `
+  const renderSections = (oasaMarkup: string, sourcesMarkup: string): string => `
+        <div class="section">
+          <h2>Updates from OASA</h2>
+          ${oasaMarkup || '<p>No OASA event updates available for this issue.</p>'}
+        </div>
+        <div class="section">
+          <h2>Space News</h2>
+          ${sourcesMarkup || '<p>No additional source updates available for this issue.</p>'}
+        </div>
+      `;
+
+  const renderNewsletterHtml = (sectionMarkup: string): string => `
     <!DOCTYPE html>
     <html>
     <head>
@@ -827,6 +874,8 @@ export const sendNewsletterEmail = async (
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; }
         .container { max-width: 700px; margin: 0 auto; background-color: white; padding: 20px; }
         .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; }
+        .section { margin: 18px 0 24px; }
+        .section h2 { margin: 0 0 10px; color: #114488; font-size: 22px; }
         .header-logo { max-width: 220px; height: auto; margin: 0 auto 14px; display: block; }
         .article { margin: 20px 0; padding: 15px; border-left: 4px solid #0066cc; background-color: #f9f9f9; }
         .article h3 { margin-top: 0; }
@@ -848,7 +897,7 @@ export const sendNewsletterEmail = async (
           <p>Latest updates from space exploration and the low-altitude economy</p>
         </div>
         
-        ${articleMarkup}
+        ${sectionMarkup}
         
         <div class="footer">
           <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
@@ -860,11 +909,16 @@ export const sendNewsletterEmail = async (
     </html>
   `;
 
-  const htmlContent = renderNewsletterHtml(renderInlineArticleBlocks());
+  const htmlContent = renderNewsletterHtml(
+    renderSections(
+      renderInlineArticleBlocks(oasaArticles, { preserveOasaText: true }),
+      renderInlineArticleBlocks(sourceArticles)
+    )
+  );
 
   const sentWithInlineImages = await sendEmail({
     to: email,
-    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
+    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
     htmlContent,
     attachments
   });
@@ -876,7 +930,12 @@ export const sendNewsletterEmail = async (
   // If inline/cached attachments fail provider validation, retry with external image URLs.
   console.warn(`Retrying newsletter send to ${email} without inline article image attachments`);
 
-  const fallbackHtmlContent = renderNewsletterHtml(renderExternalArticleBlocks());
+  const fallbackHtmlContent = renderNewsletterHtml(
+    renderSections(
+      renderExternalArticleBlocks(articles.filter((article) => String(article?.source || '').trim() === OASA_EVENTS_SOURCE), { preserveOasaText: true }),
+      renderExternalArticleBlocks(articles.filter((article) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE))
+    )
+  );
   const minimalAttachments: EmailAttachment[] = [
     {
       name: 'oasa-logo.png',
@@ -888,7 +947,7 @@ export const sendNewsletterEmail = async (
 
   return await sendEmail({
     to: email,
-    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString()}`,
+    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
     htmlContent: fallbackHtmlContent,
     attachments: minimalAttachments
   });

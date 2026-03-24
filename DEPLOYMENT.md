@@ -33,6 +33,7 @@ Set in Azure App Service (`newspace-newsletter-api`):
   - `NEWSLETTER_SENDER_TOKEN`
   - `MONITOR_TOKEN`
   - `MONITOR_ALERT_EMAILS`
+  - `MONITOR_MAX_STALE_MINUTES` (recommended `2880` for filtered daily aggregation cadence)
 - Image settings (optional):
   - `TITLE_IMAGE_GENERATION_ENABLED`
   - `AI_IMAGE_PROVIDER`
@@ -76,6 +77,9 @@ All require `x-monitor-token`.
 - `GET /api/newsletters/monitor/status`
 - `POST /api/newsletters/monitor/alert`
 - `GET /api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD`
+
+`MONITOR_MAX_STALE_MINUTES` defines the freshness threshold used by `GET /api/newsletters/monitor/status`.
+Set to `2880` minutes to avoid false "aggregation down" alerts when aggregation is daily but filtered enough to have occasional 24h+ content gaps.
 
 ## Function Endpoints (called by Function App)
 

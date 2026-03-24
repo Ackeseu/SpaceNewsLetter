@@ -58,6 +58,38 @@ const ensurePreferencesToken = async (subscriber: Subscriber): Promise<string> =
   return subscriber.preferencesToken;
 };
 
+const normalizeTopicToken = (value: string): string => value.toLowerCase().trim();
+
+const TOPIC_CATEGORY_ALIASES: Record<string, string[]> = {
+  general: [],
+  'space exploration': ['space'],
+  launches: ['launches', 'launch', 'rocket', 'space'],
+  astronomy: ['astronomy', 'space'],
+  'space economy': ['business', 'economy', 'newspace', 'commercial', 'startup', 'low-altitude-economy', 'space'],
+  'satellite news': ['satellite', 'space']
+};
+
+const mapTopicsToCategoryFilters = (topics: string[]): string[] => {
+  const normalizedTopics = topics.map(normalizeTopicToken).filter(Boolean);
+
+  if (normalizedTopics.length === 0 || normalizedTopics.includes('general')) {
+    return [];
+  }
+
+  const mapped = new Set<string>();
+  for (const topic of normalizedTopics) {
+    const aliases = TOPIC_CATEGORY_ALIASES[topic];
+    if (aliases && aliases.length > 0) {
+      aliases.forEach((alias) => mapped.add(alias));
+      continue;
+    }
+
+    mapped.add(topic);
+  }
+
+  return Array.from(mapped);
+};
+
 const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> => {
   const whereClause: Record<string, unknown> = {};
   const regions = subscriber.regions || [];
@@ -67,8 +99,9 @@ const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> =
     whereClause.region = { [Op.in]: regions };
   }
 
-  if (topics.length > 0 && !topics.includes('general')) {
-    whereClause.category = { [Op.overlap]: topics };
+  const mappedTopicCategories = mapTopicsToCategoryFilters(topics);
+  if (mappedTopicCategories.length > 0) {
+    whereClause.category = { [Op.overlap]: mappedTopicCategories };
   }
 
   return whereClause;
@@ -77,11 +110,162 @@ const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> =
 const OASA_EVENTS_SOURCE = 'OASA Events';
 const DEFAULT_MAX_PER_SOURCE = 2;
 const MAX_PER_SOURCE_OVERRIDES: Record<string, number> = {
-  [OASA_EVENTS_SOURCE]: 1
+  [OASA_EVENTS_SOURCE]: 4
 };
 
 const getMaxPerSource = (source: string): number => {
   return MAX_PER_SOURCE_OVERRIDES[source] ?? DEFAULT_MAX_PER_SOURCE;
+};
+
+type SessionBucket = 'oasa' | 'hong-kong' | 'china' | 'world';
+
+const NEWSLETTER_SESSION_PLAN: Array<{ bucket: SessionBucket; count: number }> = [
+  { bucket: 'oasa', count: 2 },
+  { bucket: 'hong-kong', count: 4 },
+  { bucket: 'china', count: 2 },
+  { bucket: 'world', count: 2 }
+];
+
+const NEWSLETTER_TARGET_ARTICLE_COUNT = NEWSLETTER_SESSION_PLAN.reduce((sum, step) => sum + step.count, 0);
+
+const normalizeArticleText = (value: unknown): string => String(value || '').toLowerCase();
+
+const ARTICLE_HK_KEYWORDS = [
+  'hong kong', 'hongkong', 'hksar', 'cyberport', 'hong kong science park', 'hkust', 'hku', '.hk/'
+];
+
+const ARTICLE_CHINA_KEYWORDS = [
+  'china', 'beijing', 'shanghai', 'shenzhen', 'guangzhou', 'prc', 'mainland'
+];
+
+const includesAnyKeyword = (value: string, keywords: string[]): boolean => {
+  return keywords.some((keyword) => value.includes(keyword));
+};
+
+const isOasaArticle = (article: Article): boolean => {
+  const source = normalizeArticleText(article.source);
+  const categories = Array.isArray(article.category) ? article.category.map((entry) => normalizeArticleText(entry)) : [];
+  const link = normalizeArticleText(article.link);
+
+  return source.includes('oasa') || categories.includes('oasa') || link.includes('oasahk.org/event');
+};
+
+const isHongKongArticle = (article: Article): boolean => {
+  const region = normalizeArticleText(article.region);
+  const source = normalizeArticleText(article.source);
+  const title = normalizeArticleText(article.title);
+  const description = normalizeArticleText(article.description);
+  const link = normalizeArticleText(article.link);
+  const categories = Array.isArray(article.category) ? article.category.map((entry) => normalizeArticleText(entry)) : [];
+  const categoryText = categories.join(' ');
+  const combined = `${source} ${title} ${description} ${link} ${categoryText}`;
+
+  return ['hong-kong', 'hongkong', 'hk'].includes(region)
+    || categories.some((entry) => ['hong-kong', 'hongkong', 'hk'].includes(entry))
+    || includesAnyKeyword(combined, ARTICLE_HK_KEYWORDS);
+};
+
+const isChinaArticle = (article: Article): boolean => {
+  if (isHongKongArticle(article)) {
+    return false;
+  }
+
+  const region = normalizeArticleText(article.region);
+  const source = normalizeArticleText(article.source);
+  const title = normalizeArticleText(article.title);
+  const description = normalizeArticleText(article.description);
+  const link = normalizeArticleText(article.link);
+  const categories = Array.isArray(article.category) ? article.category.map((entry) => normalizeArticleText(entry)) : [];
+  const categoryText = categories.join(' ');
+  const combined = `${source} ${title} ${description} ${link} ${categoryText}`;
+
+  return region === 'china'
+    || categories.includes('china')
+    || includesAnyKeyword(combined, ARTICLE_CHINA_KEYWORDS);
+};
+
+const getSessionBucket = (article: Article): SessionBucket => {
+  if (isOasaArticle(article)) {
+    return 'oasa';
+  }
+
+  if (isHongKongArticle(article)) {
+    return 'hong-kong';
+  }
+
+  if (isChinaArticle(article)) {
+    return 'china';
+  }
+
+  return 'world';
+};
+
+const selectArticlesBySessionPlan = (candidates: Article[]): Article[] => {
+  const selected: Article[] = [];
+  const selectedIds = new Set<number>();
+  const selectedBySource = new Map<string, number>();
+  const bucketLimits = new Map<SessionBucket, number>(
+    NEWSLETTER_SESSION_PLAN.map((step) => [step.bucket, step.count])
+  );
+  const selectedByBucket = new Map<SessionBucket, number>();
+
+  const tryTakeArticle = (article: Article): boolean => {
+    if (selected.length >= NEWSLETTER_TARGET_ARTICLE_COUNT) {
+      return false;
+    }
+
+    if (selectedIds.has(article.id)) {
+      return false;
+    }
+
+    const sourceCount = selectedBySource.get(article.source) || 0;
+    if (sourceCount >= getMaxPerSource(article.source)) {
+      return false;
+    }
+
+    const bucket = getSessionBucket(article);
+    const bucketCap = bucketLimits.get(bucket) ?? 0;
+    const bucketCount = selectedByBucket.get(bucket) || 0;
+    if (bucketCount >= bucketCap) {
+      return false;
+    }
+
+    selected.push(article);
+    selectedIds.add(article.id);
+    selectedBySource.set(article.source, sourceCount + 1);
+    selectedByBucket.set(bucket, bucketCount + 1);
+    return true;
+  };
+
+  for (const step of NEWSLETTER_SESSION_PLAN) {
+    let needed = step.count;
+
+    for (const article of candidates) {
+      if (needed <= 0) {
+        break;
+      }
+
+      if (getSessionBucket(article) !== step.bucket) {
+        continue;
+      }
+
+      if (tryTakeArticle(article)) {
+        needed--;
+      }
+    }
+  }
+
+  if (selected.length < NEWSLETTER_TARGET_ARTICLE_COUNT) {
+    for (const article of candidates) {
+      if (selected.length >= NEWSLETTER_TARGET_ARTICLE_COUNT) {
+        break;
+      }
+
+      tryTakeArticle(article);
+    }
+  }
+
+  return selected;
 };
 
 const pause = async (ms: number): Promise<void> => {
@@ -104,6 +288,34 @@ const parseRetryAfterSeconds = (message: string): number | null => {
 
   const seconds = Number(match[1]);
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+};
+
+const shouldRefreshBeforeScheduledSend = (frequency: 'daily' | 'weekly' | 'monthly'): boolean => {
+  const configured = (process.env.SCHEDULED_SEND_REFRESH_MODE || 'weekly').trim().toLowerCase();
+
+  if (configured === 'always') {
+    return true;
+  }
+
+  if (configured === 'never') {
+    return false;
+  }
+
+  if (configured === 'daily-weekly') {
+    return frequency === 'daily' || frequency === 'weekly';
+  }
+
+  return frequency === 'weekly';
+};
+
+const checkContentAvailability = async (frequency: 'daily' | 'weekly' | 'monthly'): Promise<{ hasContent: boolean; articleCount: number }> => {
+  try {
+    const count = await Article.count();
+    return { hasContent: count > 0, articleCount: count };
+  } catch (error) {
+    console.error('Error checking content availability:', error);
+    return { hasContent: true, articleCount: -1 }; // Assume content exists on error
+  }
 };
 
 const sqlLikeToRegex = (pattern: string): RegExp => {
@@ -258,14 +470,31 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const maxArticles = Number(process.env.MAX_ARTICLES_PER_NEWSLETTER || 10);
     const preferenceWhere = buildPreferenceWhere(subscriber);
+    const recentThreshold = new Date();
+    recentThreshold.setDate(recentThreshold.getDate() - 7);
 
-    const articles = await Article.findAll({
-      where: preferenceWhere,
-      limit: maxArticles,
+    const recentCandidates = await Article.findAll({
+      where: {
+        pubDate: { [Op.gte]: recentThreshold },
+        ...preferenceWhere
+      },
+      limit: 200,
       order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
     });
+
+    const fallbackCandidates = await Article.findAll({
+      where: preferenceWhere,
+      limit: 200,
+      order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
+    });
+
+    const recentIds = new Set(recentCandidates.map((article) => article.id));
+    const combinedCandidates = [
+      ...recentCandidates,
+      ...fallbackCandidates.filter((article) => !recentIds.has(article.id))
+    ];
+    const articles = selectArticlesBySessionPlan(combinedCandidates);
 
     const preferencesToken = await ensurePreferencesToken(subscriber);
     const emailSent = await sendNewsletterEmail(
@@ -384,6 +613,29 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       }
     }
 
+    if (shouldRefreshBeforeScheduledSend(frequency)) {
+      console.log(`Refreshing content before ${frequency} scheduled send...`);
+      const articlesAdded = await aggregateNews();
+      console.log(`✓ Pre-send refresh completed. Added ${articlesAdded} article(s)`);
+    }
+
+    // Check content availability before sending
+    const { hasContent, articleCount } = await checkContentAvailability(frequency);
+    if (!hasContent) {
+      const alertMsg = `⚠️ ALERT: No content available for ${frequency} scheduled send! Total articles in database: 0`;
+      console.error(alertMsg);
+      res.status(503).json({
+        error: 'No content available',
+        message: alertMsg,
+        frequency,
+        articleCount: 0
+      });
+      return;
+    }
+    if (articleCount === 0) {
+      console.warn(`⚠️ WARNING: Empty article database before sending to ${frequency} subscribers`);
+    }
+
     // Get all verified, active subscribers with matching frequency
     const subscribers = await Subscriber.findAll({
       where: {
@@ -432,7 +684,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     const minDomainCooldownMs = Number(process.env.EMAIL_DOMAIN_MIN_COOLDOWN_MS || 60000);
     const domainCooldownUntil = new Map<string, number>();
 
-    // Send newsletter to each subscriber with diverse articles (max 2 per source)
+    // Send newsletter to each subscriber with deterministic session allocation.
     for (const subscriber of subscribers) {
       try {
         const domain = getEmailDomain(subscriber.email);
@@ -444,29 +696,10 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           await pause(waitMs);
         }
 
-        const maxArticles = 12;
         const preferenceWhere = buildPreferenceWhere(subscriber);
         const freshnessThreshold = new Date();
         freshnessThreshold.setDate(freshnessThreshold.getDate() - 7);
-        const selectedBySource = new Map<string, number>();
 
-        const appendArticlesWithCap = (candidates: Article[]): void => {
-          for (const article of candidates) {
-            if (articles.length >= maxArticles) {
-              break;
-            }
-
-            const sourceCount = selectedBySource.get(article.source) || 0;
-            if (sourceCount >= getMaxPerSource(article.source)) {
-              continue;
-            }
-
-            articles.push(article);
-            selectedBySource.set(article.source, sourceCount + 1);
-          }
-        };
-
-        const articles: Article[] = [];
         const recentCandidates: Article[] = await Article.findAll({
           where: {
             pubDate: { [Op.gte]: freshnessThreshold },
@@ -475,20 +708,19 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           limit: 200,
           order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
         });
-        appendArticlesWithCap(recentCandidates);
 
-        // Step 2: Fallback to older articles only if needed
-        if (articles.length < maxArticles) {
-          const fallbackArticles: Article[] = await Article.findAll({
-            where: {
-              id: { [Op.notIn]: articles.map(a => a.id) },
-              ...preferenceWhere
-            },
-            limit: 200,
-            order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
-          });
-          appendArticlesWithCap(fallbackArticles);
-        }
+        const fallbackArticles: Article[] = await Article.findAll({
+          where: preferenceWhere,
+          limit: 200,
+          order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']]
+        });
+
+        const recentIds = new Set(recentCandidates.map((article) => article.id));
+        const combinedCandidates = [
+          ...recentCandidates,
+          ...fallbackArticles.filter((article) => !recentIds.has(article.id))
+        ];
+        const articles = selectArticlesBySessionPlan(combinedCandidates);
 
         const preferencesToken = await ensurePreferencesToken(subscriber);
         const emailSent = await sendNewsletterEmail(
@@ -809,6 +1041,7 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       ? Math.floor((Date.now() - latestCreatedAt.getTime()) / (1000 * 60))
       : null;
 
+    const last72Hours = new Date(Date.now() - 72 * 60 * 60 * 1000);
     const [
       articlesLast24h,
       verifiedActive,
@@ -819,7 +1052,8 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       deliveriesLast24h,
       failedDeliveriesLast24h,
       allDeliveriesLast24h,
-      allFailedDeliveriesLast24h
+      allFailedDeliveriesLast24h,
+      sourcesBreakdownRaw
     ] = await Promise.all([
       Article.count({ where: { createdAt: { [Op.gte]: last24Hours } } }),
       Subscriber.count({ where: { isVerified: true, isActive: true } }),
@@ -858,7 +1092,18 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
           ...baseScheduledWhere,
           success: false
         }
-      })
+      }),
+      Article.findAll({
+        attributes: [
+          'source',
+          [Article.sequelize!.fn('COUNT', Article.sequelize!.col('id')), 'count'],
+          [Article.sequelize!.fn('MAX', Article.sequelize!.col('createdAt')), 'latestCreatedAt']
+        ],
+        where: { createdAt: { [Op.gte]: last72Hours } },
+        group: ['source'],
+        order: [[Article.sequelize!.literal('"latestCreatedAt"'), 'DESC']],
+        raw: true
+      }) as unknown as Promise<Array<{ source: string; count: string; latestCreatedAt: string }>>
     ]);
 
     const scopedScheduledLast24h = await NewsletterDeliveryLog.findAll({
@@ -1202,6 +1447,11 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         topFailureReasons
       },
       domainHealth,
+      sourcesBreakdown: sourcesBreakdownRaw.map((row) => ({
+        source: row.source,
+        articleCount72h: Number(row.count),
+        latestArticleAt: row.latestCreatedAt ? new Date(row.latestCreatedAt).toISOString() : null
+      })),
       checkedAt: new Date().toISOString()
     });
   } catch (error) {

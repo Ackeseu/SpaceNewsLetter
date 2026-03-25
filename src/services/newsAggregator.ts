@@ -327,12 +327,23 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'secure your spot'
 ];
 
+// Known Google News / Google app logo CDN URL prefix — never a real article image.
+// All Google News RSS items return this when the article page isn't accessible.
+const GOOGLE_NEWS_LOGO_URL_PREFIX = 'https://lh3.googleusercontent.com/';
+
+const isGoogleNewsLogoUrl = (imageUrl: string): boolean =>
+  imageUrl.startsWith(GOOGLE_NEWS_LOGO_URL_PREFIX);
+
 const isGeneratedOrNonRenderableImageUrl = (imageUrl?: string): boolean => {
   if (!imageUrl) {
     return true;
   }
 
   if (!/^https?:\/\//i.test(imageUrl)) {
+    return true;
+  }
+
+  if (isGoogleNewsLogoUrl(imageUrl)) {
     return true;
   }
 
@@ -995,7 +1006,11 @@ export const aggregateNews = async (): Promise<number> => {
             continue;
           }
 
-          if (!isHongKongFocusedNewSpaceArticle(title, rawDescription, {
+          // HK-focus gate only applies to feeds explicitly targeting Hong Kong content.
+          // Global feeds (SpaceNews, NASA, ESA, etc.) supply the "world" newsletter bucket
+          // and should not be filtered by HK-signal requirement.
+          const isHkTargetedFeed = feedConfig.region === 'hong-kong';
+          if (isHkTargetedFeed && !isHongKongFocusedNewSpaceArticle(title, rawDescription, {
             source: feedConfig.source,
             category: feedConfig.category,
             region: feedConfig.region,

@@ -150,12 +150,21 @@ const normalizeImageUrlForFetch = (imageUrl: string): string => {
   return imageUrl;
 };
 
+// Google News logo hosted on lh3.googleusercontent.com — identical across all
+// Google News feed items when the real article image is unavailable.
+const isGoogleNewsLogoUrl = (imageUrl: string): boolean =>
+  imageUrl.startsWith('https://lh3.googleusercontent.com/');
+
 const isRenderableSourceImageUrl = (imageUrl?: string): boolean => {
   if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
     return false;
   }
 
   if (isAiTitleImageUrl(imageUrl) || isLocalThemedImageUrl(imageUrl)) {
+    return false;
+  }
+
+  if (isGoogleNewsLogoUrl(imageUrl)) {
     return false;
   }
 

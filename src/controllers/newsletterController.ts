@@ -501,7 +501,8 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       subscriber.email,
       articles,
       subscriber.unsubscribeToken,
-      preferencesToken
+      preferencesToken,
+      subscriber.frequency
     );
     if (!emailSent) {
       const sendError = consumeLastEmailSendError(subscriber.email) || 'Email service returned unsuccessful status';
@@ -727,7 +728,8 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           subscriber.email,
           articles,
           subscriber.unsubscribeToken,
-          preferencesToken
+          preferencesToken,
+          subscriber.frequency
         );
         if (emailSent) {
           sent++;

@@ -766,8 +766,16 @@ export const sendNewsletterEmail = async (
   email: string,
   articles: any[],
   unsubscribeToken: string,
-  preferencesToken: string
+  preferencesToken: string,
+  frequency?: 'daily' | 'weekly' | 'monthly'
 ): Promise<boolean> => {
+  const editionLabel = frequency === 'daily'
+    ? 'Daily Edition'
+    : frequency === 'weekly'
+      ? 'Weekly Edition'
+      : frequency === 'monthly'
+        ? 'Monthly Edition'
+        : '';
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const unsubscribeUrl = `${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
   const preferencesUrl = `${appUrl}/api/subscriptions/preferences/${preferencesToken}`;
@@ -866,12 +874,12 @@ export const sendNewsletterEmail = async (
 
   const renderSections = (oasaMarkup: string, sourcesMarkup: string): string => `
         <div class="section">
-          <h2>Updates from OASA</h2>
-          ${oasaMarkup || '<p>No OASA event updates available for this issue.</p>'}
-        </div>
-        <div class="section">
           <h2>Space News</h2>
           ${sourcesMarkup || '<p>No additional source updates available for this issue.</p>'}
+        </div>
+        <div class="section">
+          <h2>Updates from OASA</h2>
+          ${oasaMarkup || '<p>No OASA event updates available for this issue.</p>'}
         </div>
       `;
 
@@ -880,30 +888,34 @@ export const sendNewsletterEmail = async (
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1f2937; background-color: #f3f4f6; }
         .container { max-width: 700px; margin: 0 auto; background-color: white; padding: 20px; }
-        .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; }
-        .section { margin: 18px 0 24px; }
-        .section h2 { margin: 0 0 10px; color: #114488; font-size: 22px; }
-        .header-logo { max-width: 220px; height: auto; margin: 0 auto 14px; display: block; }
-        .article { margin: 20px 0; padding: 15px; border-left: 4px solid #0066cc; background-color: #f9f9f9; }
+        .header { background-color: #ffffff; color: #111827; padding: 24px 20px; text-align: center; border-bottom: 1px solid #e5e7eb; }
+        .header h1 { margin: 8px 0 10px; font-size: 30px; font-weight: 700; letter-spacing: -0.3px; }
+        .header p { margin: 0; font-size: 14px; color: #6b7280; }
+        .section { margin: 22px 0 28px; }
+        .section h2 { margin: 0 0 14px; color: #111827; font-size: 20px; font-weight: 700; padding-bottom: 10px; border-bottom: 2px solid #3b82f6; }
+        .header-logo { max-width: 150px; height: auto; margin: 0 auto 12px; display: block; }
+        .article { margin: 16px 0; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f9fafb; }
         .article h3 { margin-top: 0; }
         .article-title-box { background: #eef4ff; border: 1px solid #d6e4ff; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
-        .article-title-box h3 { margin: 0; font-size: 20px; line-height: 1.3; }
+        .article-title-box h3 { margin: 0; font-size: 19px; line-height: 1.3; color: #111827; }
         .article-title-box.text-only { padding: 6px 10px; background: #f3f4f6; border-color: #e5e7eb; }
         .article-title-box.text-only h3 { font-size: 16px; }
-        .article img { max-width: 100%; height: auto; margin: 10px 0; }
-        .read-more { color: #0066cc; text-decoration: none; font-weight: bold; }
-        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }
-        .disclaimer { margin-top: 16px; font-size: 10px; line-height: 1.5; color: #777; text-align: left; }
+        .article img { max-width: 100%; height: auto; margin: 10px 0; border-radius: 6px; }
+        .article p { color: #4b5563; }
+        .read-more { color: #2563eb; text-decoration: none; font-weight: 600; }
+        .footer { margin-top: 30px; padding: 20px; border-top: 1px solid #e5e7eb; background: #f9fafb; font-size: 12px; color: #6b7280; text-align: center; }
+        .footer a { color: #2563eb; text-decoration: none; }
+        .disclaimer { margin-top: 16px; font-size: 10px; line-height: 1.5; color: #9ca3af; text-align: left; }
       </style>
     </head>
     <body>
       <div class="container">
-        <div class="header">
+        <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
           <img src="cid:${logoCid}" alt="OASA logo" class="header-logo">
           <h1>OASA NewSpace Newsletter</h1>
-          <p>Latest updates from space exploration and the low-altitude economy</p>
+          <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Latest updates from space exploration and the low-altitude economy</p>
         </div>
         
         ${sectionMarkup}
@@ -927,7 +939,7 @@ export const sendNewsletterEmail = async (
 
   const sentWithInlineImages = await sendEmail({
     to: email,
-    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    subject: `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
     htmlContent,
     attachments
   });
@@ -956,7 +968,7 @@ export const sendNewsletterEmail = async (
 
   return await sendEmail({
     to: email,
-    subject: `OASA NewSpace Newsletter - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    subject: `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
     htmlContent: fallbackHtmlContent,
     attachments: minimalAttachments
   });

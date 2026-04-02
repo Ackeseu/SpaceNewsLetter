@@ -379,7 +379,11 @@ const recordDeliveryAttempt = async (params: {
 
 export const getLatestArticles = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { limit = 10, offset = 0, source, category, region } = req.query;
+    const rawLimit = Number(req.query.limit ?? 10);
+    const rawOffset = Number(req.query.offset ?? 0);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 10;
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+    const { source, category, region } = req.query;
 
     const whereClause: any = {};
     if (source) whereClause.source = source;
@@ -388,8 +392,8 @@ export const getLatestArticles = async (req: Request, res: Response): Promise<vo
 
     const articles = await Article.findAll({
       where: whereClause,
-      limit: Number(limit),
-      offset: Number(offset),
+      limit,
+      offset,
       order: [
         ['priority', 'DESC NULLS LAST'],
         ['pubDate', 'DESC']

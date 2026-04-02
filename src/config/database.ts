@@ -13,7 +13,7 @@ const sequelize = new Sequelize({
   dialectOptions: {
     ssl: process.env.DB_SSL === 'true' ? {
       require: true,
-      rejectUnauthorized: false // Azure PostgreSQL requirement
+      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'
     } : false
   },
   logging: process.env.NODE_ENV === 'development' ? console.log : false,

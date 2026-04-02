@@ -1,6 +1,6 @@
 [
   {
-    "value": "REDACTED"
+    "name": "NODE_ENV",
     "slotSetting": false,
     "value": "production"
   },
@@ -32,7 +32,7 @@
   {
     "name": "DB_PASSWORD",
     "slotSetting": false,
-    "value": "NewsSpace2026Pass"
+    "value": "REDACTED"
   },
   {
     "name": "DB_SSL",
@@ -42,7 +42,7 @@
   {
     "name": "AZURE_COMMUNICATION_CONNECTION_STRING",
     "slotSetting": false,
-    "value": "endpoint=https://newspace-newsletter-acs.unitedstates.communication.azure.com/;accesskey=REDACTED"
+    "value": "REDACTED"
   },
   {
     "name": "SENDER_EMAIL",

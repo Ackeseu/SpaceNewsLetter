@@ -4,7 +4,11 @@ export default async function NewsAggregator(context: any, myTimer: any): Promis
 
   try {
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
-    const triggerToken = process.env.NEWS_AGGREGATOR_TOKEN || 'default-token';
+    const triggerToken = process.env.NEWS_AGGREGATOR_TOKEN;
+
+    if (!triggerToken) {
+      throw new Error('NEWS_AGGREGATOR_TOKEN is not configured');
+    }
     
     context.log(`Calling news aggregation endpoint at ${apiUrl}/api/newsletters/aggregate`);
     

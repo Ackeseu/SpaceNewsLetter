@@ -58,3 +58,7 @@ coverage/
 tmp/
 temp/
 tmp-*.js
+
+# Azure App Service settings exports (may contain secrets)
+appsettings.json
+current-settings.json

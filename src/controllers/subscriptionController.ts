@@ -442,7 +442,6 @@ export const resendVerificationToUnverified = async (req: Request, res: Response
       return;
     }
 
-    const { sendVerificationEmail } = require('../services/emailService');
     let successCount = 0;
     const failedEmails: string[] = [];
 

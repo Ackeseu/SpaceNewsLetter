@@ -200,10 +200,11 @@ const getSessionBucket = (article: Article): SessionBucket => {
   return 'world';
 };
 
-const selectArticlesBySessionPlan = (candidates: Article[]): Article[] => {
+const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<string> = new Set()): Article[] => {
   const selected: Article[] = [];
   const selectedIds = new Set<number>();
   const selectedBySource = new Map<string, number>();
+  const selectedTitleHashes = new Set<string>();
   const bucketLimits = new Map<SessionBucket, number>(
     NEWSLETTER_SESSION_PLAN.map((step) => [step.bucket, step.count])
   );
@@ -216,6 +217,12 @@ const selectArticlesBySessionPlan = (candidates: Article[]): Article[] => {
 
     if (selectedIds.has(article.id)) {
       return false;
+    }
+
+    if (article.titleHash) {
+      if (excludedHashes.has(article.titleHash) || selectedTitleHashes.has(article.titleHash)) {
+        return false;
+      }
     }
 
     const sourceCount = selectedBySource.get(article.source) || 0;
@@ -234,6 +241,9 @@ const selectArticlesBySessionPlan = (candidates: Article[]): Article[] => {
     selectedIds.add(article.id);
     selectedBySource.set(article.source, sourceCount + 1);
     selectedByBucket.set(bucket, bucketCount + 1);
+    if (article.titleHash) {
+      selectedTitleHashes.add(article.titleHash);
+    }
     return true;
   };
 
@@ -288,6 +298,23 @@ const parseRetryAfterSeconds = (message: string): number | null => {
 
   const seconds = Number(match[1]);
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+};
+
+const getRecentlySentHashes = async (frequency: 'daily' | 'weekly' | 'monthly'): Promise<Set<string>> => {
+  const lookbackHours = frequency === 'daily' ? 28 : 8 * 24;
+  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
+  const rows = await Article.findAll({
+    where: { lastSentAt: { [Op.gte]: since }, titleHash: { [Op.ne]: null } },
+    attributes: ['titleHash']
+  });
+  return new Set(rows.map((a) => a.titleHash!).filter(Boolean));
+};
+
+const markArticlesAsSent = async (ids: Set<number>): Promise<void> => {
+  if (ids.size === 0) {
+    return;
+  }
+  await Article.update({ lastSentAt: new Date() }, { where: { id: [...ids] } });
 };
 
 const shouldRefreshBeforeScheduledSend = (frequency: 'daily' | 'weekly' | 'monthly'): boolean => {
@@ -494,7 +521,8 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       ...recentCandidates,
       ...fallbackCandidates.filter((article) => !recentIds.has(article.id))
     ];
-    const articles = selectArticlesBySessionPlan(combinedCandidates);
+    const excludedHashes = await getRecentlySentHashes(subscriber.frequency);
+    const articles = selectArticlesBySessionPlan(combinedCandidates, excludedHashes);
 
     const preferencesToken = await ensurePreferencesToken(subscriber);
     const emailSent = await sendNewsletterEmail(
@@ -684,6 +712,8 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     const jitterMs = Number(process.env.EMAIL_SEND_JITTER_MS || 700);
     const minDomainCooldownMs = Number(process.env.EMAIL_DOMAIN_MIN_COOLDOWN_MS || 60000);
     const domainCooldownUntil = new Map<string, number>();
+    const excludedHashes = await getRecentlySentHashes(frequency);
+    const allSentArticleIds = new Set<number>();
 
     // Send newsletter to each subscriber with deterministic session allocation.
     for (const subscriber of subscribers) {
@@ -721,7 +751,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           ...recentCandidates,
           ...fallbackArticles.filter((article) => !recentIds.has(article.id))
         ];
-        const articles = selectArticlesBySessionPlan(combinedCandidates);
+        const articles = selectArticlesBySessionPlan(combinedCandidates, excludedHashes);
 
         const preferencesToken = await ensurePreferencesToken(subscriber);
         const emailSent = await sendNewsletterEmail(
@@ -733,6 +763,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         );
         if (emailSent) {
           sent++;
+          articles.forEach((a) => allSentArticleIds.add(a.id));
           await recordDeliveryAttempt({
             email: subscriber.email,
             triggerType: 'scheduled',
@@ -790,6 +821,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     }
 
     console.log(`✓ Newsletter sending completed. Sent ${sent}, failed ${failed}`);
+    await markArticlesAsSent(allSentArticleIds);
     res.status(200).json({ sent, failed, failedRecipients });
   } catch (error) {
     console.error('Send scheduled newsletters error:', error);

@@ -13,6 +13,8 @@ interface ArticleAttributes {
   isFeatured: boolean;
   priority?: number;
   region?: string;
+  titleHash?: string;
+  lastSentAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -31,6 +33,8 @@ class Article extends Model<ArticleAttributes, ArticleCreationAttributes> implem
   public isFeatured!: boolean;
   public priority?: number;
   public region?: string;
+  public titleHash?: string;
+  public lastSentAt?: Date;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -83,6 +87,14 @@ Article.init(
     region: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    titleHash: {
+      type: DataTypes.STRING(16),
+      allowNull: true
+    },
+    lastSentAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   },
   {
@@ -101,6 +113,12 @@ Article.init(
       },
       {
         fields: ['region']
+      },
+      {
+        fields: ['titleHash']
+      },
+      {
+        fields: ['lastSentAt']
       }
     ]
   }

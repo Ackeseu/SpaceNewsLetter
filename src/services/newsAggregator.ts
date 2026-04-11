@@ -1,8 +1,26 @@
 import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
+import crypto from 'crypto';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
+
+const TITLE_HASH_STOP_WORDS = new Set([
+  'a', 'an', 'the', 'in', 'on', 'at', 'to', 'of', 'for', 'and', 'or', 'but',
+  'is', 'are', 'was', 'were', 'be', 'been', 'its', 'it', 'this', 'that', 'with',
+  'from', 'by', 'as', 'into', 'up', 'out', 'off', 'new', 's', 'has', 'have',
+  'will', 'over', 'about', 'after', 'amid', 'says', 'said', 'after'
+]);
+
+export const computeTitleHash = (title: string): string => {
+  const words = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !TITLE_HASH_STOP_WORDS.has(w));
+  const normalized = words.sort().join(' ');
+  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+};
 
 interface RSSFeed {
   url: string;
@@ -971,7 +989,8 @@ const fetchOasaEvents = async (): Promise<number> => {
           region: OASA_EVENTS_REGION,
           link
         }),
-        region: OASA_EVENTS_REGION
+        region: OASA_EVENTS_REGION,
+        titleHash: computeTitleHash(event.title)
       });
 
       articlesAdded++;
@@ -1074,7 +1093,8 @@ export const aggregateNews = async (): Promise<number> => {
             imageUrl,
             isFeatured: isTopPriorityArticle,
             priority,
-            region: feedConfig.region
+            region: feedConfig.region,
+            titleHash: computeTitleHash(title)
           });
 
           articlesAdded++;
@@ -1146,7 +1166,8 @@ export const fetchNewsAPI = async (
               source: item.source.name,
               category: ['space', 'news'],
               link: item.url
-            })
+            }),
+            titleHash: computeTitleHash(item.title)
           });
         } catch (error) {
           console.error('Error saving NewsAPI article:', error);

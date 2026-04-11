@@ -123,13 +123,7 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
     source: 'Space.com',
     category: ['space', 'news']
   },
-  {
-    url: 'http://rthk9.rthk.hk/rthk/news/rss/e_expressnews.xml',
-    source: 'RTHK Express News',
-    category: ['space', 'hong-kong', 'news'],
-    region: 'hong-kong',
-    requiredKeywords: ['space', 'satellite', 'aerospace', 'rocket', 'orbit', 'newspace', 'low-altitude economy']
-  },
+
   {
     url: 'https://spaceflightnow.com/feed/',
     source: 'Spaceflight Now',
@@ -137,48 +131,49 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
   },
   // Asia Space News Sources
   {
-    url: 'https://www.spacedaily.com/dragonspace.html',
-    source: 'Space Daily - Dragon Space (Asia)',
-    category: ['space', 'asia', 'business', 'news', 'hong-kong'],
-    region: 'asia'
+    url: 'https://news.google.com/rss/search?q=hong+kong+aerospace+OR+satellite+OR+%22space+economy%22&hl=en-US&gl=US&ceid=US:en',
+    source: 'Google News - HK Aerospace',
+    category: ['space', 'newspace', 'hong-kong', 'business', 'aerospace'],
+    region: 'hong-kong',
+    requiredKeywords: ['space', 'satellite', 'aerospace', 'rocket', 'orbit', 'newspace', 'space economy', 'commercial space']
   },
   {
-    url: 'https://news.google.com/rss/search?q=newspace+hong+kong&hl=en-HK&gl=HK&ceid=HK:en',
+    url: 'https://news.google.com/rss/search?q=newspace+hong+kong&hl=en-US&gl=US&ceid=US:en',
     source: 'Google News - NewSpace Hong Kong',
     category: ['space', 'newspace', 'hong-kong', 'business'],
     region: 'hong-kong',
     requiredKeywords: ['newspace', 'space startup', 'space economy', 'commercial space', 'satellite', 'aerospace']
   },
   {
-    url: 'https://news.google.com/rss/search?q=%22hong+kong%22+satellite&hl=en-HK&gl=HK&ceid=HK:en',
+    url: 'https://news.google.com/rss/search?q=%22hong+kong%22+satellite&hl=en-US&gl=US&ceid=US:en',
     source: 'Google News - Hong Kong Satellite',
     category: ['space', 'satellite', 'hong-kong', 'business'],
     region: 'hong-kong',
     requiredKeywords: ['satellite', 'space', 'orbit', 'aerospace', 'payload', 'launch']
   },
   {
-    url: 'https://news.google.com/rss/search?q=%22low+altitude+economy%22+hong+kong&hl=en-HK&gl=HK&ceid=HK:en',
+    url: 'https://news.google.com/rss/search?q=%22low+altitude+economy%22+hong+kong&hl=en-US&gl=US&ceid=US:en',
     source: 'Google News - HK Low Altitude Economy',
     category: ['space', 'newspace', 'hong-kong', 'business', 'low-altitude-economy'],
     region: 'hong-kong',
     requiredKeywords: ['low-altitude economy', 'drone', 'uav', 'uas', 'aerospace', 'airspace']
   },
   {
-    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Ascmp.com+%22hong+kong%22&hl=en-HK&gl=HK&ceid=HK:en',
+    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Ascmp.com+%22hong+kong%22&hl=en-US&gl=US&ceid=US:en',
     source: 'Google News - SCMP HK NewSpace',
     category: ['space', 'newspace', 'hong-kong', 'business', 'publisher'],
     region: 'hong-kong',
     requiredKeywords: ['newspace', 'space economy', 'satellite', 'aerospace', 'space startup', 'orbit', 'launch']
   },
   {
-    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Athestandard.com.hk+%22hong+kong%22&hl=en-HK&gl=HK&ceid=HK:en',
+    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Athestandard.com.hk+%22hong+kong%22&hl=en-US&gl=US&ceid=US:en',
     source: 'Google News - The Standard HK NewSpace',
     category: ['space', 'newspace', 'hong-kong', 'business', 'publisher'],
     region: 'hong-kong',
     requiredKeywords: ['newspace', 'space economy', 'satellite', 'aerospace', 'space startup', 'orbit', 'launch']
   },
   {
-    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Arthk.hk+%22hong+kong%22&hl=en-HK&gl=HK&ceid=HK:en',
+    url: 'https://news.google.com/rss/search?q=(newspace+OR+%22space+economy%22+OR+satellite+OR+aerospace)+site%3Arthk.hk+%22hong+kong%22&hl=en-US&gl=US&ceid=US:en',
     source: 'Google News - RTHK HK NewSpace',
     category: ['space', 'newspace', 'hong-kong', 'business', 'publisher'],
     region: 'hong-kong',
@@ -191,12 +186,7 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
     category: ['space', 'china', 'business'],
     region: 'china'
   },
-  {
-    url: 'http://www.xinhuanet.com/english/rss/space.xml',
-    source: 'Xinhua Space',
-    category: ['space', 'china', 'news'],
-    region: 'china'
-  },
+
   // Space Business & Economy Focused
   {
     url: 'https://www.satellitetoday.com/feed/',
@@ -1120,8 +1110,78 @@ export const aggregateNews = async (): Promise<number> => {
   }
   articlesAdded += oasaEventsAdded;
 
+  // Supplement RSS with API-based sources for regions where RSS is blocked on Azure
+  const apiArticlesAdded = await fetchApiBasedSources();
+  articlesAdded += apiArticlesAdded;
+
   console.log(`✓ Total new articles added: ${articlesAdded}`);
   return articlesAdded;
+};
+
+// Queries used by both NewsAPI and Bing to supplement HK/Asia coverage
+const API_SOURCE_QUERIES: Array<{ query: string; region: string; category: string[] }> = [
+  {
+    query: 'hong kong aerospace OR satellite OR "space economy" OR newspace',
+    region: 'hong-kong',
+    category: ['space', 'newspace', 'hong-kong', 'business']
+  },
+  {
+    query: '"low altitude economy" hong kong',
+    region: 'hong-kong',
+    category: ['space', 'newspace', 'hong-kong', 'business', 'low-altitude-economy']
+  },
+  {
+    query: 'newspace OR "commercial space" OR satellite startup asia',
+    region: 'asia',
+    category: ['space', 'newspace', 'asia', 'business']
+  }
+];
+
+const saveApiArticle = async (
+  title: string,
+  description: string,
+  link: string,
+  publishedAt: string | Date,
+  sourceName: string,
+  imageUrl: string | undefined,
+  region: string,
+  category: string[]
+): Promise<boolean> => {
+  try {
+    if (!title || !link || link === '[Removed]' || title === '[Removed]') return false;
+
+    const existingArticle = await Article.findOne({ where: { link } });
+    if (existingArticle) {
+      if (imageUrl && isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)) {
+        existingArticle.imageUrl = imageUrl;
+        await existingArticle.save();
+      }
+      return false;
+    }
+
+    const rawDesc = description || '';
+    if (!passesFeedKeywordGate(title, rawDesc, { url: link, source: sourceName, category, region })) {
+      return false;
+    }
+
+    await Article.create({
+      title,
+      description: buildArticleSummary(title, rawDesc),
+      link,
+      pubDate: new Date(publishedAt),
+      source: sourceName,
+      category,
+      imageUrl: resolveArticleImageUrl(title, imageUrl),
+      isFeatured: false,
+      priority: calculateArticlePriority(title, rawDesc, { source: sourceName, category, region, link }),
+      region,
+      titleHash: computeTitleHash(title)
+    });
+    return true;
+  } catch (error) {
+    console.error('Error saving API article:', error);
+    return false;
+  }
 };
 
 export const fetchNewsAPI = async (
@@ -1179,4 +1239,104 @@ export const fetchNewsAPI = async (
   } catch (error) {
     console.error('Error fetching from NewsAPI:', error);
   }
+};
+
+const fetchFromNewsAPI = async (): Promise<number> => {
+  const apiKey = process.env.NEWS_API_KEY;
+  if (!apiKey) return 0;
+
+  console.log('Fetching HK/Asia articles from NewsAPI...');
+  let added = 0;
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+
+    for (const { query, region, category } of API_SOURCE_QUERIES) {
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&language=en&pageSize=20&apiKey=${apiKey}`;
+      const response = await fetch(url);
+      const data: any = await response.json();
+
+      if (data.status !== 'ok' || !data.articles) {
+        console.error(`NewsAPI error for query "${query}": ${data.message || data.status}`);
+        continue;
+      }
+
+      for (const item of data.articles) {
+        const saved = await saveApiArticle(
+          item.title,
+          item.description || item.content || '',
+          item.url,
+          item.publishedAt,
+          item.source?.name || 'NewsAPI',
+          item.urlToImage,
+          region,
+          category
+        );
+        if (saved) added++;
+      }
+    }
+
+    console.log(`✓ NewsAPI: added ${added} new HK/Asia articles`);
+  } catch (error) {
+    console.error('Error fetching from NewsAPI:', error);
+  }
+
+  return added;
+};
+
+const fetchFromBingNews = async (): Promise<number> => {
+  const apiKey = process.env.BING_NEWS_API_KEY;
+  if (!apiKey) return 0;
+
+  console.log('Fetching HK/Asia articles from Bing News...');
+  let added = 0;
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+
+    for (const { query, region, category } of API_SOURCE_QUERIES) {
+      const url = `https://api.bing.microsoft.com/v7.0/news/search?q=${encodeURIComponent(query)}&count=20&mkt=en-US&freshness=Week`;
+      const response = await fetch(url, {
+        headers: { 'Ocp-Apim-Subscription-Key': apiKey }
+      });
+      const data: any = await response.json();
+
+      if (!data.value) {
+        console.error(`Bing News error for query "${query}": ${JSON.stringify(data)}`);
+        continue;
+      }
+
+      for (const item of data.value) {
+        const imageUrl = item.image?.thumbnail?.contentUrl;
+        const saved = await saveApiArticle(
+          item.name,
+          item.description || '',
+          item.url,
+          item.datePublished,
+          item.provider?.[0]?.name || 'Bing News',
+          imageUrl,
+          region,
+          category
+        );
+        if (saved) added++;
+      }
+    }
+
+    console.log(`✓ Bing News: added ${added} new HK/Asia articles`);
+  } catch (error) {
+    console.error('Error fetching from Bing News:', error);
+  }
+
+  return added;
+};
+
+// Called by aggregateNews — uses whichever API key is configured (Bing preferred, NewsAPI fallback)
+const fetchApiBasedSources = async (): Promise<number> => {
+  if (process.env.BING_NEWS_API_KEY) {
+    return fetchFromBingNews();
+  }
+  if (process.env.NEWS_API_KEY) {
+    return fetchFromNewsAPI();
+  }
+  return 0;
 };

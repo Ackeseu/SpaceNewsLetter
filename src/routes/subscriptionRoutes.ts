@@ -10,7 +10,8 @@ import {
   getSubscriberStats,
   listAllSubscribers,
   updateSubscriberAdmin,
-  deleteSubscriberAdmin
+  deleteSubscriberAdmin,
+  resendVerificationToUnverified
 } from '../controllers/subscriptionController';
 
 const router = Router();
@@ -35,6 +36,9 @@ router.put(
 
 // Admin: delete subscriber
 router.delete('/admin/:id', deleteSubscriberAdmin);
+
+// Admin: bulk resend verification to all unverified subscribers
+router.post('/resend-verification-bulk', resendVerificationToUnverified);
 
 // Subscribe to newsletter
 router.post(

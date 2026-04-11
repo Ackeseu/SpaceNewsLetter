@@ -2,6 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 import { sequelize } from './config/database';
 import subscriptionRoutes from './routes/subscriptionRoutes';
 import newsletterRoutes from './routes/newsletterRoutes';
@@ -12,13 +13,30 @@ dotenv.config();
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
 
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*'
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.static('public'));
 
 // Routes
@@ -26,8 +44,10 @@ app.get('/', (req: Request, res: Response) => {
   res.sendFile('./public/index.html');
 });
 
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/newsletters', newsletterRoutes);
+app.use('/api/subscriptions/subscribe', strictLimiter);
+app.use('/api/subscriptions/resend-verification', strictLimiter);
+app.use('/api/subscriptions', limiter, subscriptionRoutes);
+app.use('/api/newsletters', limiter, newsletterRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
@@ -60,9 +80,8 @@ const startServer = async () => {
       await Promise.race([dbConnectionPromise, timeoutPromise]);
       console.log('✓ Database connection established successfully');
 
-      // Sync database models - use alter: true only on first run to add missing columns
-      // Set ALTER_DB=true environment variable if you need to alter existing schema
-      const shouldAlter = process.env.ALTER_DB === 'true' || process.env.NODE_ENV === 'development';
+      // Sync database models - use alter: true only when explicitly requested via ALTER_DB=true
+      const shouldAlter = process.env.ALTER_DB === 'true';
       await sequelize.sync({ alter: shouldAlter });
       console.log(`✓ Database models synchronized${shouldAlter ? ' (with schema modifications)' : ''}`);
     } catch (dbError) {

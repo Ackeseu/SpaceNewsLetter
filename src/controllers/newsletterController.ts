@@ -6,7 +6,7 @@ import Subscriber from '../models/Subscriber';
 import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import { consumeLastEmailSendError, sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
-import { Op, QueryTypes } from 'sequelize';
+import { Op, QueryTypes, WhereOptions } from 'sequelize';
 import crypto from 'crypto';
 import NewsSource from '../models/NewsSource';
 import adminChangelogConfig from '../config/adminChangelog.json';
@@ -304,7 +304,7 @@ const getRecentlySentHashes = async (frequency: 'daily' | 'weekly' | 'monthly'):
   const lookbackHours = frequency === 'daily' ? 28 : 8 * 24;
   const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
   const rows = await Article.findAll({
-    where: { lastSentAt: { [Op.gte]: since }, titleHash: { [Op.ne]: null } },
+    where: { lastSentAt: { [Op.gte]: since }, titleHash: { [Op.ne]: null } } as WhereOptions,
     attributes: ['titleHash']
   });
   return new Set(rows.map((a) => a.titleHash!).filter(Boolean));

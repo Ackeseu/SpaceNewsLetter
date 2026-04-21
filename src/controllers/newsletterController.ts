@@ -117,6 +117,32 @@ const getMaxPerSource = (source: string): number => {
   return MAX_PER_SOURCE_OVERRIDES[source] ?? DEFAULT_MAX_PER_SOURCE;
 };
 
+const HONG_KONG_TIME_ZONE = 'Asia/Hong_Kong';
+
+const getDateKeyInTimeZone = (value: Date | string | number, timeZone: string = HONG_KONG_TIME_ZONE): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === 'year')?.value || '';
+  const month = parts.find((part) => part.type === 'month')?.value || '';
+  const day = parts.find((part) => part.type === 'day')?.value || '';
+
+  if (!year || !month || !day) {
+    return '';
+  }
+
+  return `${year}-${month}-${day}`;
+};
+
 type SessionBucket = 'oasa' | 'hong-kong' | 'china' | 'world';
 
 const NEWSLETTER_SESSION_PLAN: Array<{ bucket: SessionBucket; count: number }> = [
@@ -200,6 +226,21 @@ const getSessionBucket = (article: Article): SessionBucket => {
   return 'world';
 };
 
+const isEligibleNewsletterArticle = (article: Article): boolean => {
+  if (!isOasaArticle(article)) {
+    return true;
+  }
+
+  const articleDateKey = getDateKeyInTimeZone(article.pubDate as unknown as string);
+  const todayDateKey = getDateKeyInTimeZone(new Date());
+
+  if (!articleDateKey || !todayDateKey) {
+    return false;
+  }
+
+  return articleDateKey >= todayDateKey;
+};
+
 const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<string> = new Set()): Article[] => {
   const selected: Article[] = [];
   const selectedIds = new Set<number>();
@@ -216,6 +257,10 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
     }
 
     if (selectedIds.has(article.id)) {
+      return false;
+    }
+
+    if (!isEligibleNewsletterArticle(article)) {
       return false;
     }
 

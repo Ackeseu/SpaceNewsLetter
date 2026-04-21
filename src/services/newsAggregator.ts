@@ -985,7 +985,45 @@ const extractEventDate = (text: string): Date | undefined => {
   return parsed;
 };
 
-const isCanonicalOasaEventLink = (link: string): boolean => link.startsWith('https://www.oasahk.org/event-details/');
+const HONG_KONG_TIME_ZONE = 'Asia/Hong_Kong';
+
+const getDateKeyInTimeZone = (value: Date | string | number, timeZone: string = HONG_KONG_TIME_ZONE): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === 'year')?.value || '';
+  const month = parts.find((part) => part.type === 'month')?.value || '';
+  const day = parts.find((part) => part.type === 'day')?.value || '';
+
+  if (!year || !month || !day) {
+    return '';
+  }
+
+  return `${year}-${month}-${day}`;
+};
+
+const isCurrentOrUpcomingOasaEvent = (pubDate?: Date): boolean => {
+  if (!pubDate) {
+    return true;
+  }
+
+  const eventDateKey = getDateKeyInTimeZone(pubDate);
+  const todayDateKey = getDateKeyInTimeZone(new Date());
+  if (!eventDateKey || !todayDateKey) {
+    return false;
+  }
+
+  return eventDateKey >= todayDateKey;
+};
 
 const isGenericOasaTitle = (title: string): boolean => OASA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
 
@@ -1009,14 +1047,16 @@ const fetchOasaEvents = async (): Promise<number> => {
       pubDate?: Date;
     }>();
 
-    $('a[href*="/event-details/"]').each((_, element) => {
-      const href = $(element).attr('href');
+    $('li[data-hook="events-card"]').each((_, element) => {
+      const card = $(element);
+      const titleAnchor = card.find('a[data-hook="title"]').first();
+      const href = titleAnchor.attr('href');
       if (!href) {
         return;
       }
 
-      const link = href.startsWith('http') ? href : `https://www.oasahk.org${href}`;
-      if (!isCanonicalOasaEventLink(link)) {
+      const link = resolveAbsoluteUrl(href, OASA_EVENTS_URL);
+      if (!link) {
         return;
       }
 
@@ -1024,9 +1064,9 @@ const fetchOasaEvents = async (): Promise<number> => {
         return;
       }
 
-      const titleText = normalizeText($(element).text())
-        || normalizeText($(element).attr('aria-label') || '')
-        || normalizeText($(element).attr('title') || '');
+      const titleText = normalizeText(titleAnchor.text())
+        || normalizeText(titleAnchor.attr('aria-label') || '')
+        || normalizeText(titleAnchor.attr('title') || '');
 
       if (!titleText || isGenericOasaTitle(titleText)) {
         return;
@@ -1041,9 +1081,16 @@ const fetchOasaEvents = async (): Promise<number> => {
         return;
       }
 
-      const containerText = normalizeText($(element).parent().text());
+      const containerText = normalizeText(card.text());
       const pubDate = extractEventDate(containerText);
-      let description = normalizeText(containerText.replace(titleText, '').trim());
+      if (!isCurrentOrUpcomingOasaEvent(pubDate)) {
+        return;
+      }
+
+      let description = normalizeText(card.find('.PLst2a').first().text());
+      if (!description) {
+        description = normalizeText(containerText.replace(titleText, '').trim());
+      }
       if (description.length < 20) {
         description = 'OASA event details and schedule are available on the event page.';
       }

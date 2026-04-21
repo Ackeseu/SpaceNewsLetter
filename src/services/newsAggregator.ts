@@ -1,6 +1,7 @@
 import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
+import { Op } from 'sequelize';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
@@ -334,6 +335,113 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'share event',
   'secure your spot'
 ];
+const OASA_EVENTS_GENERIC_TITLES = new Set(['rsvp', 'details', 'more info']);
+
+// ─── InvestHK + OASES (HK Government) News Sources ───────────────────────────
+
+const INVESTHK_NEWS_SOURCE = 'InvestHK';
+const INVESTHK_NEWS_URL = 'https://www.investhk.gov.hk/en/news/';
+const INVESTHK_NEWS_CATEGORY = ['space', 'hong-kong', 'china', 'business', 'enterprise'];
+const INVESTHK_NEWS_REGION = 'hong-kong';
+
+const OASES_NEWS_SOURCE = 'OASES News';
+const OASES_NEWS_URL = 'https://www.oases.gov.hk/en/news.html';
+const OASES_NEWS_CATEGORY = ['space', 'hong-kong', 'china', 'business', 'enterprise'];
+const OASES_NEWS_REGION = 'hong-kong';
+
+/** Look-back window for HK government site scrapes (90 days) */
+const HK_GOV_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Keywords that indicate space / aerospace sector relevance.
+ * Used to filter articles from HK government investment sites so that only
+ * China space-company news ends up in the newsletter.
+ */
+const CHINA_SPACE_FILTER_KEYWORDS = [
+  'satellite', 'aerospace', 'rocket', 'orbit', 'spacecraft', 'space station',
+  'constellation', 'earth observation', 'remote sensing', 'launch vehicle',
+  'launch service', 'low-altitude economy', 'drone', 'uav', 'uas', 'airspace',
+  'space technology', 'space economy', 'newspace', 'commercial space',
+  'space company', 'space enterprise', 'space industry', 'space startup',
+  'space sector', 'space exploration', 'navigation satellite', 'beidou',
+  'microsatellite', 'smallsat', 'cubesat', 'propulsion', 'avionics', 'spacetech',
+  'space tech', 'space fund', 'space investment'
+];
+
+const isChinaSpaceRelatedText = (title: string, extra?: string): boolean => {
+  const text = `${title} ${extra || ''}`.toLowerCase();
+  return CHINA_SPACE_FILTER_KEYWORDS.some((kw) => text.includes(kw));
+};
+
+/**
+ * Parse a HK government date embedded in text.
+ * Handles: "(9.3.2026)" in titles AND "01.04.2026" standalone text.
+ */
+const parseEmbeddedHKDate = (text: string): Date | undefined => {
+  // Format: (D.M.YYYY) – embedded in OASES title text
+  const embeddedMatch = text.match(/\((\d{1,2})\.(\d{1,2})\.(\d{4})\)/);
+  if (embeddedMatch) {
+    const d = new Date(
+      parseInt(embeddedMatch[3], 10),
+      parseInt(embeddedMatch[2], 10) - 1,
+      parseInt(embeddedMatch[1], 10)
+    );
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  // Format: DD.MM.YYYY – standalone date field on InvestHK
+  const standaloneMatch = text.match(/\b(\d{2})\.(\d{2})\.(\d{4})\b/);
+  if (standaloneMatch) {
+    const d = new Date(
+      parseInt(standaloneMatch[3], 10),
+      parseInt(standaloneMatch[2], 10) - 1,
+      parseInt(standaloneMatch[1], 10)
+    );
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  return undefined;
+};
+
+/** Strip "(with photos) (9.3.2026)" suffixes that OASES appends to article titles */
+const stripOasesDateSuffix = (title: string): string =>
+  title
+    .replace(/\s*\(with\s+(?:photos?|videos?|photo\/video)[^)]*\)\s*$/, '')
+    .replace(/\s*\(\d{1,2}\.\d{1,2}\.\d{4}\)\s*$/, '')
+    .trim();
+
+const saveHKGovArticle = async (
+  title: string,
+  description: string,
+  link: string,
+  pubDate: Date,
+  source: string,
+  category: string[],
+  region: string
+): Promise<boolean> => {
+  try {
+    const existing = await Article.findOne({ where: { link } });
+    if (existing) return false;
+
+    await Article.create({
+      title: normalizeText(title),
+      description: buildArticleSummary(title, description),
+      link,
+      pubDate,
+      source,
+      category,
+      imageUrl: undefined,
+      isFeatured: false,
+      priority: calculateArticlePriority(title, description, { source, category, region, link }),
+      region,
+      titleHash: computeTitleHash(title)
+    });
+    return true;
+  } catch (error) {
+    console.error(`Error saving HK gov article (${source}):`, error);
+    return false;
+  }
+};
 
 // Known Google News / Google app logo CDN URL prefix — never a real article image.
 // All Google News RSS items return this when the article page isn't accessible.
@@ -877,6 +985,10 @@ const extractEventDate = (text: string): Date | undefined => {
   return parsed;
 };
 
+const isCanonicalOasaEventLink = (link: string): boolean => link.startsWith('https://www.oasahk.org/event-details/');
+
+const isGenericOasaTitle = (title: string): boolean => OASA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
+
 const fetchOasaEvents = async (): Promise<number> => {
   let articlesAdded = 0;
 
@@ -904,6 +1016,10 @@ const fetchOasaEvents = async (): Promise<number> => {
       }
 
       const link = href.startsWith('http') ? href : `https://www.oasahk.org${href}`;
+      if (!isCanonicalOasaEventLink(link)) {
+        return;
+      }
+
       if (eventLinks.has(link)) {
         return;
       }
@@ -912,7 +1028,7 @@ const fetchOasaEvents = async (): Promise<number> => {
         || normalizeText($(element).attr('aria-label') || '')
         || normalizeText($(element).attr('title') || '');
 
-      if (!titleText) {
+      if (!titleText || isGenericOasaTitle(titleText)) {
         return;
       }
 
@@ -953,12 +1069,47 @@ const fetchOasaEvents = async (): Promise<number> => {
 
       const existingArticle = await Article.findOne({ where: { link } });
       if (existingArticle) {
+        let hasUpdates = false;
+
+        if (existingArticle.title !== event.title) {
+          existingArticle.title = event.title;
+          existingArticle.titleHash = computeTitleHash(event.title);
+          hasUpdates = true;
+        }
+
+        if (existingArticle.description !== event.description) {
+          existingArticle.description = event.description;
+          hasUpdates = true;
+        }
+
+        const nextPubDate = event.pubDate || existingArticle.pubDate || new Date();
+        if (new Date(existingArticle.pubDate).getTime() !== new Date(nextPubDate).getTime()) {
+          existingArticle.pubDate = nextPubDate;
+          hasUpdates = true;
+        }
+
         const shouldReplaceExistingImage =
           isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)
           || isLowQualityOasaImageUrl(existingArticle.imageUrl || undefined);
 
-        if (eventImageUrl && shouldReplaceExistingImage) {
-          existingArticle.imageUrl = eventImageUrl;
+        const resolvedImageUrl = resolveArticleImageUrl(event.title, eventImageUrl);
+        if (resolvedImageUrl && (shouldReplaceExistingImage || existingArticle.imageUrl !== resolvedImageUrl)) {
+          existingArticle.imageUrl = resolvedImageUrl;
+          hasUpdates = true;
+        }
+
+        const nextPriority = calculateArticlePriority(event.title, event.description, {
+          source: OASA_EVENTS_SOURCE,
+          category: OASA_EVENTS_CATEGORY,
+          region: OASA_EVENTS_REGION,
+          link
+        });
+        if (existingArticle.priority !== nextPriority) {
+          existingArticle.priority = nextPriority;
+          hasUpdates = true;
+        }
+
+        if (hasUpdates) {
           await existingArticle.save();
         }
         continue;
@@ -985,11 +1136,183 @@ const fetchOasaEvents = async (): Promise<number> => {
 
       articlesAdded++;
     }
+
+    const staleThreshold = new Date();
+    staleThreshold.setDate(staleThreshold.getDate() - 30);
+
+    const activeLinks = [...eventLinks.keys()];
+    const staleWhere: any = {
+      source: OASA_EVENTS_SOURCE,
+      pubDate: { [Op.gte]: staleThreshold }
+    };
+
+    if (activeLinks.length > 0) {
+      staleWhere.link = { [Op.notIn]: activeLinks };
+    }
+
+    const staleRemoved = await Article.destroy({ where: staleWhere });
+    if (staleRemoved > 0) {
+      console.log(`Removed ${staleRemoved} stale OASA event article(s) no longer on the live events page.`);
+    }
   } catch (error) {
     console.error('Error fetching OASA events:', error);
   }
 
   return articlesAdded;
+};
+
+/**
+ * Scrapes https://www.investhk.gov.hk/en/news/ for recent articles
+ * about China space-related companies and saves them to the DB.
+ */
+const fetchInvestHKNews = async (): Promise<number> => {
+  const cutoff = new Date(Date.now() - HK_GOV_LOOKBACK_MS);
+  let added = 0;
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(INVESTHK_NEWS_URL, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)' }
+    });
+
+    if (!response.ok) {
+      console.error(`InvestHK news fetch failed: ${response.status}`);
+      return 0;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const seenLinks = new Set<string>();
+
+    // Collect article entries from anchor tags whose href path is an article slug
+    // (filter out navigation items, filter params, and top-level /en/news/ links)
+    const articleEntries: Array<{ title: string; link: string; containerText: string }> = [];
+
+    $('a[href]').each((_, el) => {
+      const href = ($(el).attr('href') || '').trim();
+      const isArticleLink =
+        href.includes('/en/news/')
+        && !href.includes('?')
+        && !/\/en\/news\/?$/.test(href);
+
+      if (!isArticleLink) return;
+
+      const fullUrl = href.startsWith('http')
+        ? href
+        : `https://www.investhk.gov.hk${href}`;
+
+      if (seenLinks.has(fullUrl)) return;
+      seenLinks.add(fullUrl);
+
+      const titleText = normalizeText($(el).text());
+      if (!titleText || titleText.length < 10) return;
+
+      // Look for the date in the surrounding container (DD.MM.YYYY format)
+      const container = $(el).closest('div, article, li, section');
+      const containerText = normalizeText(
+        container.length ? container.text() : $(el).parent().text()
+      );
+
+      articleEntries.push({ title: titleText, link: fullUrl, containerText });
+    });
+
+    for (const entry of articleEntries) {
+      const pubDate = parseEmbeddedHKDate(entry.containerText);
+      if (!pubDate || pubDate < cutoff) continue;
+
+      if (!isChinaSpaceRelatedText(entry.title, entry.containerText)) continue;
+
+      const saved = await saveHKGovArticle(
+        entry.title,
+        entry.containerText.slice(0, 600),
+        entry.link,
+        pubDate,
+        INVESTHK_NEWS_SOURCE,
+        INVESTHK_NEWS_CATEGORY,
+        INVESTHK_NEWS_REGION
+      );
+      if (saved) added++;
+    }
+
+    console.log(`✓ InvestHK: added ${added} new China space-related article(s)`);
+  } catch (error) {
+    console.error('Error fetching InvestHK news:', error);
+  }
+
+  return added;
+};
+
+/**
+ * Scrapes https://www.oases.gov.hk/en/news.html for recent press-release links
+ * about China space-related companies and saves them to the DB.
+ */
+const fetchOasesNewsArticles = async (): Promise<number> => {
+  const cutoff = new Date(Date.now() - HK_GOV_LOOKBACK_MS);
+  let added = 0;
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(OASES_NEWS_URL, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)' }
+    });
+
+    if (!response.ok) {
+      console.error(`OASES news fetch failed: ${response.status}`);
+      return 0;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const seenLinks = new Set<string>();
+
+    // OASES press releases link to info.gov.hk, news.gov.hk, or other external gov URLs.
+    // The raw anchor text contains the date embedded as "(D.M.YYYY)" at the end.
+    const articleEntries: Array<{ title: string; link: string; pubDate: Date }> = [];
+
+    $('a[href]').each((_, el) => {
+      const href = ($(el).attr('href') || '').trim();
+      const isArticleLink =
+        href.includes('info.gov.hk')
+        || href.includes('news.gov.hk')
+        || (href.startsWith('https://') && !href.includes('oases.gov.hk'));
+
+      if (!isArticleLink) return;
+      if (seenLinks.has(href)) return;
+      seenLinks.add(href);
+
+      const rawTitle = normalizeText($(el).text());
+      if (!rawTitle || rawTitle.length < 10) return;
+
+      const pubDate = parseEmbeddedHKDate(rawTitle);
+      if (!pubDate || pubDate < cutoff) return;
+
+      const cleanTitle = stripOasesDateSuffix(rawTitle);
+      if (!cleanTitle || cleanTitle.length < 10) return;
+
+      if (!isChinaSpaceRelatedText(cleanTitle)) return;
+
+      articleEntries.push({ title: cleanTitle, link: href, pubDate });
+    });
+
+    for (const entry of articleEntries) {
+      const saved = await saveHKGovArticle(
+        entry.title,
+        `OASES press release: ${entry.title}`,
+        entry.link,
+        entry.pubDate,
+        OASES_NEWS_SOURCE,
+        OASES_NEWS_CATEGORY,
+        OASES_NEWS_REGION
+      );
+      if (saved) added++;
+    }
+
+    console.log(`✓ OASES News: added ${added} new China space-related article(s)`);
+  } catch (error) {
+    console.error('Error fetching OASES news articles:', error);
+  }
+
+  return added;
 };
 
 export const aggregateNews = async (): Promise<number> => {
@@ -1109,6 +1432,11 @@ export const aggregateNews = async (): Promise<number> => {
     console.log(`✓ Processed ${oasaEventsAdded} new articles from ${OASA_EVENTS_SOURCE}`);
   }
   articlesAdded += oasaEventsAdded;
+
+  // HK government sites: InvestHK + OASES (China space-related company news)
+  const investhkAdded = await fetchInvestHKNews();
+  const oasesNewsAdded = await fetchOasesNewsArticles();
+  articlesAdded += investhkAdded + oasesNewsAdded;
 
   // Supplement RSS with API-based sources for regions where RSS is blocked on Azure
   const apiArticlesAdded = await fetchApiBasedSources();

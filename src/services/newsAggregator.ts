@@ -336,6 +336,7 @@ const OASA_EVENTS_TITLE_EXCLUSIONS = [
   'secure your spot'
 ];
 const OASA_EVENTS_GENERIC_TITLES = new Set(['rsvp', 'details', 'more info']);
+const OASA_EVENTS_DESCRIPTION_CTA_PATTERN = /(more info|rsvp|secure your spot)/gi;
 
 // ─── InvestHK + OASES (HK Government) News Sources ───────────────────────────
 
@@ -788,6 +789,10 @@ function calculateArticlePriority(
 
 const normalizeText = (value: string): string => value.replace(/\s+/g, ' ').trim();
 
+const stripOasaDescriptionCtas = (value: string): string => normalizeText(
+  value.replace(OASA_EVENTS_DESCRIPTION_CTA_PATTERN, ' ')
+);
+
 const resolveAbsoluteUrl = (rawUrl?: string, baseUrl = OASA_EVENTS_URL): string | undefined => {
   if (!rawUrl) {
     return undefined;
@@ -1087,9 +1092,16 @@ const fetchOasaEvents = async (): Promise<number> => {
         return;
       }
 
-      let description = normalizeText(card.find('.PLst2a').first().text());
+      const descriptionContainer = card.find('.PLst2a').first().clone();
+      descriptionContainer.find('a, button, [role="button"]').remove();
+
+      let description = stripOasaDescriptionCtas(normalizeText(descriptionContainer.text()));
       if (!description) {
-        description = normalizeText(containerText.replace(titleText, '').trim());
+        const cardBody = card.clone();
+        cardBody.find('a[data-hook="title"], a, button, [role="button"], img').remove();
+        description = stripOasaDescriptionCtas(
+          normalizeText(cardBody.text().replace(titleText, '').trim())
+        );
       }
       if (description.length < 20) {
         description = 'OASA event details and schedule are available on the event page.';

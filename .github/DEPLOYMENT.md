@@ -58,7 +58,7 @@ Your deployed app includes:
 - 💼 **Business-focused filtering** (keyword-based scoring)
 - 📧 **Azure Communication Services** email integration
 - ⏰ **Automated news aggregation** (every 6 hours via Azure Functions)
-- 📨 **Weekly newsletters** (Mondays 9 AM UTC)
+- 📨 **Daily and weekly newsletters**
 
 ## Troubleshooting
 

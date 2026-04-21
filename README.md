@@ -6,8 +6,10 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 
 - 📧 Email subscription management with verification
 - 🚀 Automated news aggregation from multiple sources (SpaceNews, NASA, ESA)
-- 📰 Customizable newsletter frequency (daily, weekly, monthly)
+- 📰 Customizable newsletter frequency (daily or weekly)
 - 🎯 Topic-based preferences
+- 🔁 Repeat suppression for non-OASA topics after three sends per topic fingerprint
+- 📅 OASA event blurbs render without the site countdown label
 - ☁️ Azure-native architecture
 - 🔒 Secure unsubscribe mechanism
 - 📱 RESTful API
@@ -18,7 +20,7 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 - **Database**: Azure Database for PostgreSQL with Sequelize ORM
 - **Email**: Azure Communication Services
 - **Scheduling**: Azure Functions (Timer Triggers)
-- **News Sources**: RSS feeds (SpaceNews, NASA, ESA) + NewsAPI
+- **News Sources**: RSS feeds (SpaceNews, NASA, ESA), curated OASA/InvestHK/OASES pages, and NewsAPI
 
 ## Project Structure
 
@@ -29,7 +31,8 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 │   │   └── database.ts        # Database configuration
 │   ├── models/
 │   │   ├── Subscriber.ts      # Subscriber model
-│   │   └── Article.ts         # Article model
+│   │   ├── Article.ts         # Article model
+│   │   └── ArticleTopicSendStat.ts # Topic repeat suppression tracking
 │   ├── controllers/
 │   │   ├── subscriptionController.ts
 │   │   └── newsletterController.ts
@@ -210,6 +213,12 @@ The API will be available at `http://localhost:3000`.
 - `GET /api/newsletters/sources` - List news sources (requires admin token)
 - `POST /api/newsletters/sources` - Create news source (requires admin token)
 - `DELETE /api/newsletters/sources/:id` - Delete news source (requires admin token)
+
+Newsletter behavior notes:
+
+- Subscription frequency is normalized to `daily` or `weekly`; `monthly` is no longer accepted by the API or admin UI.
+- OASA event items are rendered in a dedicated section, and the email renderer removes the website countdown prefix such as `34 days to the event`.
+- Daily and weekly sends suppress non-OASA topics after three deliveries for the same topic fingerprint using `article_topic_send_stats`.
 
 ### Monitoring
 

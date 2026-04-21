@@ -831,11 +831,24 @@ export const sendNewsletterEmail = async (
   ];
 
   const oasaArticles = articleWithImageCids.filter(({ article }) => String(article?.source || '').trim() === OASA_EVENTS_SOURCE);
-  const sourceArticles = articleWithImageCids.filter(({ article }) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE);
+  const getPublishedTimestamp = (value: unknown): number => {
+    const parsed = new Date(String(value || ''));
+    const timestamp = parsed.getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  };
+
+  const sourceArticles = articleWithImageCids
+    .filter(({ article }) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE)
+    .sort((a, b) => getPublishedTimestamp(b.article?.pubDate) - getPublishedTimestamp(a.article?.pubDate));
 
   const normalizeOasaDescription = (value: unknown): string => {
     const raw = String(value || '').trim();
-    return raw.replace(/^\s*summary\s*:\s*/i, '').replace(/^\s*key\s*point\s*:\s*/i, '').trim();
+    return raw
+      .replace(/^\s*summary\s*:\s*/i, '')
+      .replace(/^\s*key\s*point\s*:\s*/i, '')
+      .replace(/^\s*\d+\s+days?\s+to\s+the\s+event\s*/i, '')
+      .replace(/\s*more\s+info\s*$/i, '')
+      .trim();
   };
 
   const renderInlineArticleBlocks = (items: Array<{ article: any; cid?: string; hasImage: boolean }>, options?: { preserveOasaText?: boolean }): string => items.map(({ article, cid, hasImage }) => {
@@ -954,7 +967,11 @@ export const sendNewsletterEmail = async (
   const fallbackHtmlContent = renderNewsletterHtml(
     renderSections(
       renderExternalArticleBlocks(articles.filter((article) => String(article?.source || '').trim() === OASA_EVENTS_SOURCE), { preserveOasaText: true }),
-      renderExternalArticleBlocks(articles.filter((article) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE))
+      renderExternalArticleBlocks(
+        articles
+          .filter((article) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE)
+          .sort((a, b) => getPublishedTimestamp(b?.pubDate) - getPublishedTimestamp(a?.pubDate))
+      )
     )
   );
   const minimalAttachments: EmailAttachment[] = [

@@ -442,7 +442,7 @@ const getContentTypeExtension = (contentType: string): string => {
 };
 
 const loadLogoBase64 = (): string => {
-  const logoPath = path.resolve(__dirname, '../../public/oasa-logo.png');
+  const logoPath = path.resolve(__dirname, '../../public/oasa-banner.png');
   if (!fs.existsSync(logoPath)) {
     return TRANSPARENT_PIXEL_BASE64;
   }
@@ -820,7 +820,7 @@ export const sendNewsletterEmail = async (
 
   const attachments: EmailAttachment[] = [
     {
-      name: 'oasa-logo.png',
+      name: 'oasa-banner.png',
       contentType: 'image/png',
       contentInBase64: logoBase64,
       contentId: logoCid
@@ -908,7 +908,7 @@ export const sendNewsletterEmail = async (
         .header p { margin: 0; font-size: 14px; color: #6b7280; }
         .section { margin: 22px 0 28px; }
         .section h2 { margin: 0 0 14px; color: #111827; font-size: 20px; font-weight: 700; padding-bottom: 10px; border-bottom: 2px solid #3b82f6; }
-        .header-logo { max-width: 150px; height: auto; margin: 0 auto 12px; display: block; }
+        .header-logo { max-width: 100%; width: 100%; height: auto; display: block; border-radius: 0; }
         .article { margin: 16px 0; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f9fafb; }
         .article h3 { margin-top: 0; }
         .article-title-box { background: #eef4ff; border: 1px solid #d6e4ff; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
@@ -926,7 +926,7 @@ export const sendNewsletterEmail = async (
     <body>
       <div class="container">
         <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
-          <img src="cid:${logoCid}" alt="OASA logo" class="header-logo">
+          <img src="cid:${logoCid}" alt="OASA NewSpace Newsletter" class="header-logo">
           <h1>OASA NewSpace Newsletter</h1>
           <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Latest updates from space exploration and the low-altitude economy</p>
         </div>
@@ -976,7 +976,7 @@ export const sendNewsletterEmail = async (
   );
   const minimalAttachments: EmailAttachment[] = [
     {
-      name: 'oasa-logo.png',
+      name: 'oasa-banner.png',
       contentType: 'image/png',
       contentInBase64: logoBase64,
       contentId: logoCid

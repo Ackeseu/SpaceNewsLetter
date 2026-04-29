@@ -962,11 +962,16 @@ export const sendNewsletterEmail = async (
   }
 
   // If inline/cached attachments fail provider validation, retry with external image URLs.
-  console.warn(`Retrying newsletter send to ${email} without inline article image attachments`);
+  console.warn(`Retrying newsletter send to ${email} with reduced inline attachments (OASA only)`);
+
+  const oasaInlineAttachments: EmailAttachment[] = articleWithImageCids
+    .filter((item) => String(item.article?.source || '').trim() === OASA_EVENTS_SOURCE)
+    .map((item) => item.attachment)
+    .filter((attachment): attachment is EmailAttachment => Boolean(attachment));
 
   const fallbackHtmlContent = renderNewsletterHtml(
     renderSections(
-      renderExternalArticleBlocks(articles.filter((article) => String(article?.source || '').trim() === OASA_EVENTS_SOURCE), { preserveOasaText: true }),
+      renderInlineArticleBlocks(oasaArticles, { preserveOasaText: true }),
       renderExternalArticleBlocks(
         articles
           .filter((article) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE)
@@ -980,7 +985,8 @@ export const sendNewsletterEmail = async (
       contentType: 'image/png',
       contentInBase64: logoBase64,
       contentId: logoCid
-    }
+    },
+    ...oasaInlineAttachments
   ];
 
   return await sendEmail({

@@ -453,7 +453,11 @@ const getRecentlySentHashes = async (frequency: 'daily' | 'weekly' | 'monthly'):
   const lookbackHours = frequency === 'daily' ? 28 : 8 * 24;
   const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
   const rows = await Article.findAll({
-    where: { lastSentAt: { [Op.gte]: since }, titleHash: { [Op.ne]: null } } as WhereOptions,
+    where: {
+      lastSentAt: { [Op.gte]: since },
+      titleHash: { [Op.ne]: null },
+      source: { [Op.ne]: OASA_EVENTS_SOURCE }
+    } as WhereOptions,
     attributes: ['titleHash']
   });
   return new Set(rows.map((a) => a.titleHash!).filter(Boolean));

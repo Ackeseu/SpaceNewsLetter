@@ -113,7 +113,8 @@ const DEFAULT_MAX_PER_SOURCE = 2;
 const NEWSLETTER_REPEAT_LIMIT = 3;
 const REPEAT_SUPPRESSION_FREQUENCIES = new Set(['daily', 'weekly']);
 const MAX_PER_SOURCE_OVERRIDES: Record<string, number> = {
-  [OASA_EVENTS_SOURCE]: 4
+  // Allow all eligible OASA events to be selected when available.
+  [OASA_EVENTS_SOURCE]: 50
 };
 
 const getMaxPerSource = (source: string): number => {
@@ -317,6 +318,25 @@ const isEligibleNewsletterArticle = (article: Article): boolean => {
 };
 
 const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<string> = new Set()): Article[] => {
+  const baseOasaPlanCount = NEWSLETTER_SESSION_PLAN.find((step) => step.bucket === 'oasa')?.count || 0;
+  const eligibleOasaCount = candidates.filter((article) => {
+    if (getSessionBucket(article) !== 'oasa') {
+      return false;
+    }
+
+    if (!isEligibleNewsletterArticle(article)) {
+      return false;
+    }
+
+    if (article.titleHash && excludedHashes.has(article.titleHash)) {
+      return false;
+    }
+
+    return true;
+  }).length;
+
+  const effectiveTargetCount = NEWSLETTER_TARGET_ARTICLE_COUNT + Math.max(0, eligibleOasaCount - baseOasaPlanCount);
+
   const selected: Article[] = [];
   const selectedIds = new Set<number>();
   const selectedBySource = new Map<string, number>();
@@ -324,10 +344,11 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
   const bucketLimits = new Map<SessionBucket, number>(
     NEWSLETTER_SESSION_PLAN.map((step) => [step.bucket, step.count])
   );
+  bucketLimits.set('oasa', Math.max(bucketLimits.get('oasa') || 0, eligibleOasaCount));
   const selectedByBucket = new Map<SessionBucket, number>();
 
   const tryTakeArticle = (article: Article): boolean => {
-    if (selected.length >= NEWSLETTER_TARGET_ARTICLE_COUNT) {
+    if (selected.length >= effectiveTargetCount) {
       return false;
     }
 
@@ -368,7 +389,9 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
   };
 
   for (const step of NEWSLETTER_SESSION_PLAN) {
-    let needed = step.count;
+    let needed = step.bucket === 'oasa'
+      ? eligibleOasaCount
+      : step.count;
 
     const prioritizedCandidates = step.bucket === 'oasa'
       ? candidates
@@ -391,9 +414,9 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
     }
   }
 
-  if (selected.length < NEWSLETTER_TARGET_ARTICLE_COUNT) {
+  if (selected.length < effectiveTargetCount) {
     for (const article of candidates) {
-      if (selected.length >= NEWSLETTER_TARGET_ARTICLE_COUNT) {
+      if (selected.length >= effectiveTargetCount) {
         break;
       }
 

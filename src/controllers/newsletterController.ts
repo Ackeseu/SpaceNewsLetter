@@ -4,6 +4,7 @@ import Parser from 'rss-parser';
 import Article from '../models/Article';
 import Subscriber from '../models/Subscriber';
 import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
+import ArticleTopicSendStat from '../models/ArticleTopicSendStat';
 import { consumeLastEmailSendError, sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
 import { Op, QueryTypes, WhereOptions } from 'sequelize';
@@ -109,12 +110,19 @@ const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> =
 
 const OASA_EVENTS_SOURCE = 'OASA Events';
 const DEFAULT_MAX_PER_SOURCE = 2;
+const NEWSLETTER_REPEAT_LIMIT = 3;
+const REPEAT_SUPPRESSION_FREQUENCIES = new Set(['daily', 'weekly']);
 const MAX_PER_SOURCE_OVERRIDES: Record<string, number> = {
   [OASA_EVENTS_SOURCE]: 4
 };
 
 const getMaxPerSource = (source: string): number => {
   return MAX_PER_SOURCE_OVERRIDES[source] ?? DEFAULT_MAX_PER_SOURCE;
+};
+
+const getPubDateTimestamp = (article: Article): number => {
+  const timestamp = new Date(article.pubDate as unknown as string).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
 };
 
 const HONG_KONG_TIME_ZONE = 'Asia/Hong_Kong';
@@ -141,6 +149,73 @@ const getDateKeyInTimeZone = (value: Date | string | number, timeZone: string = 
   }
 
   return `${year}-${month}-${day}`;
+};
+
+const getArticleTopicToken = (article: Pick<Article, 'titleHash' | 'title'>): string => {
+  if (article.titleHash && article.titleHash.trim()) {
+    return article.titleHash.trim().toLowerCase();
+  }
+
+  return crypto.createHash('sha256')
+    .update(String(article.title || '').trim().toLowerCase())
+    .digest('hex')
+    .slice(0, 16);
+};
+
+const getArticleTopicDate = (article: Pick<Article, 'pubDate'>): string => {
+  const date = new Date(article.pubDate as unknown as string);
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown-date';
+  }
+
+  return date.toISOString().slice(0, 10);
+};
+
+const getArticleTopicFingerprint = (article: Pick<Article, 'source' | 'titleHash' | 'title' | 'pubDate'>): string => {
+  const source = String(article.source || '').trim().toLowerCase();
+  const topicToken = getArticleTopicToken(article);
+  const pubDate = getArticleTopicDate(article);
+  return `${source}|${pubDate}|${topicToken}`;
+};
+
+const filterRepeatedSpaceNewsArticles = async (articles: Article[]): Promise<Article[]> => {
+  const spaceNewsArticles = articles.filter((article) => !isOasaArticle(article));
+  if (spaceNewsArticles.length === 0) {
+    return articles;
+  }
+
+  const fingerprints = Array.from(new Set(spaceNewsArticles.map((article) => getArticleTopicFingerprint(article))));
+  const exhaustedRows = await ArticleTopicSendStat.findAll({
+    where: {
+      topicFingerprint: { [Op.in]: fingerprints },
+      sendCount: { [Op.gte]: NEWSLETTER_REPEAT_LIMIT }
+    },
+    attributes: ['topicFingerprint']
+  });
+
+  const blockedFingerprints = new Set(exhaustedRows.map((row) => row.topicFingerprint));
+  if (blockedFingerprints.size === 0) {
+    return articles;
+  }
+
+  return articles.filter((article) => {
+    if (isOasaArticle(article)) {
+      return true;
+    }
+    return !blockedFingerprints.has(getArticleTopicFingerprint(article));
+  });
+};
+
+const orderArticlesForNewsletterSections = (articles: Article[]): Article[] => {
+  const oasaArticles = articles
+    .filter((article) => String(article.source || '').trim() === OASA_EVENTS_SOURCE)
+    .sort((a, b) => getPubDateTimestamp(b) - getPubDateTimestamp(a));
+
+  const sourceArticles = articles
+    .filter((article) => String(article.source || '').trim() !== OASA_EVENTS_SOURCE)
+    .sort((a, b) => getPubDateTimestamp(b) - getPubDateTimestamp(a));
+
+  return [...sourceArticles, ...oasaArticles];
 };
 
 type SessionBucket = 'oasa' | 'hong-kong' | 'china' | 'world';
@@ -295,7 +370,13 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
   for (const step of NEWSLETTER_SESSION_PLAN) {
     let needed = step.count;
 
-    for (const article of candidates) {
+    const prioritizedCandidates = step.bucket === 'oasa'
+      ? candidates
+        .filter((article) => getSessionBucket(article) === 'oasa')
+        .sort((a, b) => getPubDateTimestamp(a) - getPubDateTimestamp(b))
+      : candidates;
+
+    for (const article of prioritizedCandidates) {
       if (needed <= 0) {
         break;
       }
@@ -362,6 +443,29 @@ const markArticlesAsSent = async (ids: Set<number>): Promise<void> => {
   await Article.update({ lastSentAt: new Date() }, { where: { id: [...ids] } });
 };
 
+const updateTopicSendStats = async (ids: Set<number>): Promise<void> => {
+  if (ids.size === 0) {
+    return;
+  }
+
+  const sentArticles = await Article.findAll({
+    where: { id: [...ids] },
+    attributes: ['source', 'title', 'titleHash', 'pubDate']
+  });
+
+  const uniqueFingerprints = Array.from(new Set(sentArticles.map((article) => getArticleTopicFingerprint(article))));
+  for (const topicFingerprint of uniqueFingerprints) {
+    const [stat] = await ArticleTopicSendStat.findOrCreate({
+      where: { topicFingerprint },
+      defaults: { topicFingerprint, sendCount: 0, lastSentAt: null }
+    });
+
+    await stat.increment('sendCount', { by: 1 });
+    stat.lastSentAt = new Date();
+    await stat.save();
+  }
+};
+
 const shouldRefreshBeforeScheduledSend = (frequency: 'daily' | 'weekly' | 'monthly'): boolean => {
   const configured = (process.env.SCHEDULED_SEND_REFRESH_MODE || 'weekly').trim().toLowerCase();
 
@@ -388,6 +492,10 @@ const checkContentAvailability = async (frequency: 'daily' | 'weekly' | 'monthly
     console.error('Error checking content availability:', error);
     return { hasContent: true, articleCount: -1 }; // Assume content exists on error
   }
+};
+
+const normalizeNewsletterFrequency = (value: unknown): 'daily' | 'weekly' => {
+  return String(value || '').trim().toLowerCase() === 'daily' ? 'daily' : 'weekly';
 };
 
 const sqlLikeToRegex = (pattern: string): RegExp => {
@@ -570,8 +678,15 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       ...recentCandidates,
       ...fallbackCandidates.filter((article) => !recentIds.has(article.id))
     ];
-    const excludedHashes = await getRecentlySentHashes(subscriber.frequency);
-    const articles = selectArticlesBySessionPlan(combinedCandidates, excludedHashes);
+    const effectiveFrequency = normalizeNewsletterFrequency(subscriber.frequency);
+    const excludedHashes = await getRecentlySentHashes(effectiveFrequency);
+    const filteredCandidates = REPEAT_SUPPRESSION_FREQUENCIES.has(effectiveFrequency)
+      ? await filterRepeatedSpaceNewsArticles(combinedCandidates)
+      : combinedCandidates;
+
+    const articles = orderArticlesForNewsletterSections(
+      selectArticlesBySessionPlan(filteredCandidates, excludedHashes)
+    );
 
     const preferencesToken = await ensurePreferencesToken(subscriber);
     const emailSent = await sendNewsletterEmail(
@@ -579,14 +694,14 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       articles,
       subscriber.unsubscribeToken,
       preferencesToken,
-      subscriber.frequency
+      effectiveFrequency
     );
     if (!emailSent) {
       const sendError = consumeLastEmailSendError(subscriber.email) || 'Email service returned unsuccessful status';
       await recordDeliveryAttempt({
         email: subscriber.email,
         triggerType: 'test',
-        frequency: subscriber.frequency,
+        frequency: effectiveFrequency,
         success: false,
         errorMessage: sendError,
         articleCount: articles.length
@@ -598,7 +713,7 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
     await recordDeliveryAttempt({
       email: subscriber.email,
       triggerType: 'test',
-      frequency: subscriber.frequency,
+      frequency: effectiveFrequency,
       success: true,
       articleCount: articles.length
     });
@@ -646,11 +761,12 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       return;
     }
 
-    const { frequency = 'weekly', dryRun: bodyDryRun, manual: bodyManual } = req.body as {
+    const { frequency: requestedFrequency, dryRun: bodyDryRun, manual: bodyManual } = req.body as {
       frequency?: 'daily' | 'weekly' | 'monthly';
       dryRun?: boolean;
       manual?: boolean;
     };
+    const frequency = normalizeNewsletterFrequency(requestedFrequency);
 
     const queryDryRun = typeof req.query.dryRun === 'string' && req.query.dryRun.toLowerCase() === 'true';
     const dryRun = queryDryRun || bodyDryRun === true;
@@ -776,6 +892,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           await pause(waitMs);
         }
 
+        const effectiveFrequency = normalizeNewsletterFrequency(subscriber.frequency);
         const preferenceWhere = buildPreferenceWhere(subscriber);
         const freshnessThreshold = new Date();
         freshnessThreshold.setDate(freshnessThreshold.getDate() - 7);
@@ -800,7 +917,13 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           ...recentCandidates,
           ...fallbackArticles.filter((article) => !recentIds.has(article.id))
         ];
-        const articles = selectArticlesBySessionPlan(combinedCandidates, excludedHashes);
+        const filteredCandidates = REPEAT_SUPPRESSION_FREQUENCIES.has(effectiveFrequency)
+          ? await filterRepeatedSpaceNewsArticles(combinedCandidates)
+          : combinedCandidates;
+
+        const articles = orderArticlesForNewsletterSections(
+          selectArticlesBySessionPlan(filteredCandidates, excludedHashes)
+        );
 
         const preferencesToken = await ensurePreferencesToken(subscriber);
         const emailSent = await sendNewsletterEmail(
@@ -808,7 +931,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           articles,
           subscriber.unsubscribeToken,
           preferencesToken,
-          subscriber.frequency
+          effectiveFrequency
         );
         if (emailSent) {
           sent++;
@@ -816,7 +939,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           await recordDeliveryAttempt({
             email: subscriber.email,
             triggerType: 'scheduled',
-            frequency: subscriber.frequency,
+            frequency: effectiveFrequency,
             success: true,
             articleCount: articles.length
           });
@@ -837,7 +960,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           await recordDeliveryAttempt({
             email: subscriber.email,
             triggerType: 'scheduled',
-            frequency: subscriber.frequency,
+            frequency: effectiveFrequency,
             success: false,
             errorMessage: sendError,
             articleCount: articles.length
@@ -853,7 +976,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         await recordDeliveryAttempt({
           email: subscriber.email,
           triggerType: 'scheduled',
-          frequency: subscriber.frequency,
+          frequency: normalizeNewsletterFrequency(subscriber.frequency),
           success: false,
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
           articleCount: 0
@@ -871,6 +994,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
 
     console.log(`✓ Newsletter sending completed. Sent ${sent}, failed ${failed}`);
     await markArticlesAsSent(allSentArticleIds);
+    await updateTopicSendStats(allSentArticleIds);
     res.status(200).json({ sent, failed, failedRecipients });
   } catch (error) {
     console.error('Send scheduled newsletters error:', error);

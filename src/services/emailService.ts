@@ -928,7 +928,7 @@ export const sendNewsletterEmail = async (
         <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
           <img src="cid:${logoCid}" alt="OASA NewSpace Newsletter" class="header-logo">
           <h1>OASA NewSpace Newsletter</h1>
-          <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Latest updates from space exploration and the low-altitude economy</p>
+          <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Curated NewSpace summaries from around the world, for our members only</p>
         </div>
         
         ${sectionMarkup}

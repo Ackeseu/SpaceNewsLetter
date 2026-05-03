@@ -623,12 +623,31 @@ const hasAnyKeyword = (text: string, keywords: string[]): boolean => {
   return keywords.some((keyword) => text.includes(keyword));
 };
 
+const CRIME_WAR_EXCLUSION_KEYWORDS: string[] = [
+  'murder', 'homicide', 'robbery', 'theft', 'burglary', 'assault', 'kidnap',
+  'trafficking', 'drug bust', 'gang', 'cartel', 'criminal', 'crime',
+  'war crime', 'genocide', 'atrocity', 'massacre', 'bombing', 'terrorist',
+  'terrorism', 'insurgent', 'insurgency', 'militia', 'war zone', 'warzone',
+  'battlefield', 'ceasefire', 'airstrike', 'air strike', 'shelling',
+  'casualt', 'fatalities', 'civilian deaths', 'war in', 'military conflict',
+  'armed conflict', 'hostage', 'ransom', 'smuggling', 'fraud conviction',
+  'indicted', 'arrested for', 'sentenced to'
+];
+
+const passesCrimeWarFilter = (text: string): boolean => {
+  return !hasAnyKeyword(text, CRIME_WAR_EXCLUSION_KEYWORDS);
+};
+
 const passesFeedKeywordGate = (
   title: string,
   description: string,
   feedConfig: RSSFeed
 ): boolean => {
   const text = `${title} ${description}`.toLowerCase();
+
+  if (!passesCrimeWarFilter(text)) {
+    return false;
+  }
 
   const hasRequiredKeywords = (() => {
     if (!feedConfig.requiredKeywords || feedConfig.requiredKeywords.length === 0) {

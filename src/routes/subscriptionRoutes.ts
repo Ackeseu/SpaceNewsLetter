@@ -26,7 +26,7 @@ router.get('/admin/list', listAllSubscribers);
 router.put(
   '/admin/:id',
   [
-    body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
+    body('frequency').optional().isIn(['daily', 'weekly']),
     body('firstName').optional().isString().trim(),
     body('lastName').optional().isString().trim(),
     body('isActive').optional().isBoolean()
@@ -45,7 +45,7 @@ router.post(
   '/subscribe',
   [
     body('email').isEmail().normalizeEmail(),
-    body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
+    body('frequency').optional().isIn(['daily', 'weekly']),
     body('topics').optional().isArray(),
     body('regions').optional().isArray()
   ],
@@ -74,7 +74,7 @@ router.get('/preferences/:token', getPreferences);
 router.put(
   '/preferences/:token',
   [
-    body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
+    body('frequency').optional().isIn(['daily', 'weekly']),
     body('topics').optional().isArray(),
     body('regions').optional().isArray()
   ],

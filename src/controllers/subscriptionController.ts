@@ -252,7 +252,7 @@ export const updateSubscriberAdmin = async (req: Request, res: Response): Promis
     const { firstName, lastName, frequency, isActive } = req.body as {
       firstName?: string;
       lastName?: string;
-      frequency?: 'daily' | 'weekly' | 'monthly';
+      frequency?: 'daily' | 'weekly';
       isActive?: boolean;
     };
 
@@ -322,7 +322,7 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
       whereClause.isActive = false;
     }
 
-    if (frequency !== 'all' && ['daily', 'weekly', 'monthly'].includes(frequency)) {
+    if (frequency !== 'all' && ['daily', 'weekly'].includes(frequency)) {
       whereClause.frequency = frequency;
     }
 

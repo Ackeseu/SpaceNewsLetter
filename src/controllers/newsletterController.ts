@@ -1341,10 +1341,10 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
     ]);
 
     const scopedScheduledLast24h = await NewsletterDeliveryLog.findAll({
-      attributes: ['email', 'success'],
+      attributes: ['email', 'success', 'frequency'],
       where: scopedScheduledWhere,
       raw: true
-    }) as Array<{ email: string; success: boolean }>;
+    }) as Array<{ email: string; success: boolean; frequency: string }>;
 
     const recipientOutcome = new Map<string, { attempts: number; hasSuccess: boolean }>();
     for (const row of scopedScheduledLast24h) {
@@ -1364,6 +1364,34 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
     const finalOutcomeSuccessRateLast24h = recipientsWithAnyAttempt > 0
       ? recipientsWithFinalSuccess / recipientsWithAnyAttempt
       : 0;
+
+    const recipientOutcomeByFrequency = new Map<'daily' | 'weekly', Map<string, { attempts: number; hasSuccess: boolean }>>([
+      ['daily', new Map()],
+      ['weekly', new Map()]
+    ]);
+
+    for (const row of scopedScheduledLast24h) {
+      const frequency = normalizeNewsletterFrequency(row.frequency);
+      if (frequency !== 'daily' && frequency !== 'weekly') {
+        continue;
+      }
+
+      const key = String(row.email || '').toLowerCase();
+      if (!key) {
+        continue;
+      }
+
+      const frequencyMap = recipientOutcomeByFrequency.get(frequency)!;
+      const current = frequencyMap.get(key) || { attempts: 0, hasSuccess: false };
+      current.attempts += 1;
+      current.hasSuccess = current.hasSuccess || Boolean(row.success);
+      frequencyMap.set(key, current);
+    }
+
+    const impactedRecipientsByFrequency = {
+      daily: Array.from(recipientOutcomeByFrequency.get('daily')!.values()).filter((item) => !item.hasSuccess).length,
+      weekly: Array.from(recipientOutcomeByFrequency.get('weekly')!.values()).filter((item) => !item.hasSuccess).length
+    };
 
     const domainStats = new Map<string, { total: number; succeeded: number; failed: number }>();
     for (const row of scopedScheduledLast24h) {
@@ -1614,7 +1642,7 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         up: emailDeliveryHealthy,
         detail: deliveriesLast24h === 0
           ? 'No scheduled deliveries in the last 24 hours'
-          : `${failedDeliveriesLast24h}/${deliveriesLast24h} scheduled deliveries failed in last 24 hours (impacted daily recipients: ${impactedDailyRecipients.length})`
+          : `${failedDeliveriesLast24h}/${deliveriesLast24h} scheduled deliveries failed in last 24 hours (impacted recipients: ${recipientsWithoutFinalSuccess}; daily: ${impactedRecipientsByFrequency.daily}, weekly: ${impactedRecipientsByFrequency.weekly})`
       }
     ];
 
@@ -1673,7 +1701,8 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         finalOutcomeSuccessRateLast24h,
         recipientsWithAnyAttempt,
         recipientsWithFinalSuccess,
-        recipientsWithoutFinalSuccess
+        recipientsWithoutFinalSuccess,
+        impactedRecipientsByFrequency
       },
       failureTrends: {
         currentWindowHours: 24,

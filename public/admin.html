@@ -775,6 +775,71 @@
       padding: 0;
     }
 
+    .inline-status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .inline-status-pill.active {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .inline-status-pill.inactive {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .subscriber-history {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid #e8ecf3;
+    }
+
+    .subscriber-history-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #23324d;
+      margin-bottom: 10px;
+    }
+
+    .subscriber-history-item {
+      padding: 10px 12px;
+      border: 1px solid #e8ecf3;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      background: #fafbfd;
+    }
+
+    .subscriber-history-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .subscriber-history-detail {
+      font-size: 13px;
+      color: #33415c;
+      margin-bottom: 4px;
+    }
+
+    .subscriber-history-meta {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .subscriber-history-empty {
+      font-size: 13px;
+      color: #6b7280;
+      padding: 10px 0;
+    }
+
     .checkbox-group {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -1214,6 +1279,10 @@
           <input type="email" id="editEmail" readonly style="background: #f0f0f0; cursor: not-allowed;">
         </div>
         <div class="form-group">
+          <label>Current Status</label>
+          <div id="editCurrentStatus" class="inline-status-pill active">Active</div>
+        </div>
+        <div class="form-group">
           <label for="editFirstName">First Name</label>
           <input type="text" id="editFirstName">
         </div>
@@ -1226,6 +1295,10 @@
         </div>
         <button type="submit">Save Changes</button>
         <button type="button" id="editPrefsBtn" style="margin-top: 10px;">Edit Preferences</button>
+        <div class="subscriber-history">
+          <div class="subscriber-history-title">Status History</div>
+          <div id="subscriberStatusHistory" class="subscriber-history-empty">No status changes recorded yet.</div>
+        </div>
       </form>
     </div>
   </div>

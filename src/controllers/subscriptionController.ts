@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import Subscriber from '../models/Subscriber';
 import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
+import SubscriberStatusAuditLog from '../models/SubscriberStatusAuditLog';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '../services/emailService';
 import { Op } from 'sequelize';
@@ -14,6 +15,25 @@ const requireAdminToken = (req: Request, res: Response): boolean => {
     return false;
   }
   return true;
+};
+
+const recordStatusAudit = async (
+  subscriber: Subscriber,
+  fromIsActive: boolean | null,
+  toIsActive: boolean,
+  changeSource: 'subscribe' | 'unsubscribe' | 'admin',
+  changeReason: string,
+  actor: string | null = null
+): Promise<void> => {
+  await SubscriberStatusAuditLog.create({
+    subscriberId: subscriber.id,
+    email: subscriber.email,
+    fromIsActive,
+    toIsActive,
+    changeSource,
+    changeReason,
+    actor
+  });
 };
 
 export const subscribe = async (req: Request, res: Response): Promise<void> => {
@@ -34,11 +54,20 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
         return;
       }
       // Reactivate if previously unsubscribed
+      const wasActive = existingSubscriber.isActive;
       existingSubscriber.isActive = true;
       existingSubscriber.frequency = frequency || existingSubscriber.frequency;
       existingSubscriber.topics = topics || existingSubscriber.topics;
       existingSubscriber.regions = regions || existingSubscriber.regions;
       await existingSubscriber.save();
+      await recordStatusAudit(
+        existingSubscriber,
+        wasActive,
+        existingSubscriber.isActive,
+        'subscribe',
+        'Subscriber reactivated via subscribe endpoint',
+        existingSubscriber.email
+      );
       res.status(200).json({ message: 'Subscription reactivated', subscriber: existingSubscriber });
       return;
     }
@@ -128,8 +157,19 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    const wasActive = subscriber.isActive;
     subscriber.isActive = false;
     await subscriber.save();
+    if (wasActive !== subscriber.isActive) {
+      await recordStatusAudit(
+        subscriber,
+        wasActive,
+        subscriber.isActive,
+        'unsubscribe',
+        'Subscriber unsubscribed via unsubscribe link',
+        subscriber.email
+      );
+    }
 
     res.status(200).json({ message: 'Successfully unsubscribed' });
   } catch (error) {
@@ -262,16 +302,61 @@ export const updateSubscriberAdmin = async (req: Request, res: Response): Promis
       return;
     }
 
+    const wasActive = subscriber.isActive;
+
     if (firstName !== undefined) subscriber.firstName = firstName;
     if (lastName !== undefined) subscriber.lastName = lastName;
     if (frequency) subscriber.frequency = frequency;
     if (isActive !== undefined) subscriber.isActive = isActive;
 
     await subscriber.save();
+    if (isActive !== undefined && wasActive !== subscriber.isActive) {
+      await recordStatusAudit(
+        subscriber,
+        wasActive,
+        subscriber.isActive,
+        'admin',
+        subscriber.isActive ? 'Subscriber reactivated by admin' : 'Subscriber deactivated by admin',
+        'admin'
+      );
+    }
     res.status(200).json({ message: 'Subscriber updated', subscriber });
   } catch (error) {
     console.error('Update subscriber admin error:', error);
     res.status(500).json({ error: 'Failed to update subscriber' });
+  }
+};
+
+export const getSubscriberStatusHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const subscriber = await Subscriber.findByPk(id, {
+      attributes: ['id', 'email']
+    });
+    if (!subscriber) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    const history = await SubscriberStatusAuditLog.findAll({
+      where: { subscriberId: subscriber.id },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      subscriber: {
+        id: subscriber.id,
+        email: subscriber.email
+      },
+      history
+    });
+  } catch (error) {
+    console.error('Get subscriber status history error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscriber status history' });
   }
 };
 

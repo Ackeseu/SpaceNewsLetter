@@ -721,12 +721,71 @@ function editSubscriber(id) {
     document.getElementById('editEmail').value = sub.email;
     document.getElementById('editFirstName').value = sub.firstName || '';
     document.getElementById('editFrequency').value = sub.frequency || 'weekly';
+    const statusEl = document.getElementById('editCurrentStatus');
+    if (statusEl) {
+      statusEl.textContent = sub.isActive ? 'Active' : 'Inactive';
+      statusEl.className = `inline-status-pill ${sub.isActive ? 'active' : 'inactive'}`;
+    }
+    renderSubscriberStatusHistory([], true);
     document.getElementById('editModal').classList.add('show');
+    loadSubscriberStatusHistory(sub.id);
   }
 }
 
 function closeModal() {
   document.getElementById('editModal').classList.remove('show');
+}
+
+function renderSubscriberStatusHistory(entries, isLoading = false) {
+  const historyEl = document.getElementById('subscriberStatusHistory');
+  if (!historyEl) {
+    return;
+  }
+
+  if (isLoading) {
+    historyEl.innerHTML = '<div class="subscriber-history-empty">Loading status history...</div>';
+    return;
+  }
+
+  if (!Array.isArray(entries) || entries.length === 0) {
+    historyEl.innerHTML = '<div class="subscriber-history-empty">No status changes recorded yet.</div>';
+    return;
+  }
+
+  historyEl.innerHTML = entries.map((entry) => {
+    const stateLabel = entry.toIsActive ? 'Active' : 'Inactive';
+    const sourceLabel = String(entry.changeSource || 'unknown');
+    const actorLabel = entry.actor ? ` by ${entry.actor}` : '';
+    const changedAt = formatDateTime(entry.createdAt);
+    return `
+      <div class="subscriber-history-item">
+        <div class="subscriber-history-topline">
+          <span class="inline-status-pill ${entry.toIsActive ? 'active' : 'inactive'}">${stateLabel}</span>
+          <span class="subscriber-history-meta">${changedAt}</span>
+        </div>
+        <div class="subscriber-history-detail">${entry.changeReason || 'Status updated'}${actorLabel}</div>
+        <div class="subscriber-history-meta">Source: ${sourceLabel}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadSubscriberStatusHistory(id) {
+  try {
+    const response = await fetch(`${API_URL}/api/subscriptions/admin/${id}/history`, {
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (!response.ok) {
+      renderSubscriberStatusHistory([], false);
+      return;
+    }
+
+    const payload = await response.json();
+    renderSubscriberStatusHistory(payload.history || [], false);
+  } catch (error) {
+    renderSubscriberStatusHistory([], false);
+  }
 }
 
 async function deleteSubscriber(id, email) {

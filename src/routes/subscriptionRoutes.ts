@@ -9,6 +9,7 @@ import {
   updatePreferences,
   getSubscriberStats,
   listAllSubscribers,
+  getSubscriberStatusHistory,
   updateSubscriberAdmin,
   deleteSubscriberAdmin,
   resendVerificationToUnverified
@@ -21,6 +22,9 @@ router.get('/stats', getSubscriberStats);
 
 // Admin: list all subscribers (place before dynamic routes)
 router.get('/admin/list', listAllSubscribers);
+
+// Admin: subscriber status history
+router.get('/admin/:id/history', getSubscriberStatusHistory);
 
 // Admin: update subscriber
 router.put(

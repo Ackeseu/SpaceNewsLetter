@@ -11,6 +11,7 @@ import { Op, QueryTypes, WhereOptions } from 'sequelize';
 import crypto from 'crypto';
 import NewsSource from '../models/NewsSource';
 import adminChangelogConfig from '../config/adminChangelog.json';
+import { passesNewsletterContentFilter } from '../utils/newsletterContentFilter';
 
 const sourceTestParser = new Parser();
 
@@ -304,7 +305,16 @@ const getSessionBucket = (article: Article): SessionBucket => {
 
 const isEligibleNewsletterArticle = (article: Article): boolean => {
   if (!isOasaArticle(article)) {
-    return true;
+    return passesNewsletterContentFilter(
+      String(article.title || ''),
+      String(article.description || ''),
+      {
+        source: String(article.source || ''),
+        category: Array.isArray(article.category) ? article.category.map((entry) => String(entry)) : [],
+        region: String(article.region || ''),
+        link: String(article.link || '')
+      }
+    );
   }
 
   const articleDateKey = getDateKeyInTimeZone(article.pubDate as unknown as string);

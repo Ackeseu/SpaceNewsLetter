@@ -5,6 +5,10 @@ import { Op } from 'sequelize';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
+import {
+  passesCrimeWarFilter,
+  passesTopicalRelevanceFilter
+} from '../utils/newsletterContentFilter';
 
 const TITLE_HASH_STOP_WORDS = new Set([
   'a', 'an', 'the', 'in', 'on', 'at', 'to', 'of', 'for', 'and', 'or', 'but',
@@ -185,7 +189,8 @@ export const DEFAULT_RSS_FEEDS: RSSFeed[] = [
     url: 'https://www.globaltimes.cn/rss/outbrain.xml',
     source: 'Global Times (China)',
     category: ['space', 'china', 'business'],
-    region: 'china'
+    region: 'china',
+    requiredKeywords: ['satellite', 'aerospace', 'rocket', 'orbit', 'spacecraft', 'space station', 'launch vehicle', 'launch service', 'space economy', 'newspace', 'commercial space', 'space company', 'space technology', 'low-altitude economy']
   },
 
   // Space Business & Economy Focused
@@ -621,21 +626,6 @@ const fetchArticleDetailImageUrl = async (
 
 const hasAnyKeyword = (text: string, keywords: string[]): boolean => {
   return keywords.some((keyword) => text.includes(keyword));
-};
-
-const CRIME_WAR_EXCLUSION_KEYWORDS: string[] = [
-  'murder', 'homicide', 'robbery', 'theft', 'burglary', 'assault', 'kidnap',
-  'trafficking', 'drug bust', 'gang', 'cartel', 'criminal', 'crime',
-  'war crime', 'genocide', 'atrocity', 'massacre', 'bombing', 'terrorist',
-  'terrorism', 'insurgent', 'insurgency', 'militia', 'war zone', 'warzone',
-  'battlefield', 'ceasefire', 'airstrike', 'air strike', 'shelling',
-  'casualt', 'fatalities', 'civilian deaths', 'war in', 'military conflict',
-  'armed conflict', 'hostage', 'ransom', 'smuggling', 'fraud conviction',
-  'indicted', 'arrested for', 'sentenced to'
-];
-
-const passesCrimeWarFilter = (text: string): boolean => {
-  return !hasAnyKeyword(text, CRIME_WAR_EXCLUSION_KEYWORDS);
 };
 
 const passesFeedKeywordGate = (
@@ -1429,6 +1419,15 @@ export const aggregateNews = async (): Promise<number> => {
             continue;
           }
 
+          if (!passesTopicalRelevanceFilter(title, rawDescription, {
+            source: feedConfig.source,
+            category: feedConfig.category,
+            region: feedConfig.region,
+            link: item.link || ''
+          })) {
+            continue;
+          }
+
           if (!isCurrentYearGoogleNewsItem(feedConfig, item.pubDate)) {
             continue;
           }
@@ -1570,6 +1569,15 @@ const saveApiArticle = async (
       return false;
     }
 
+    if (!passesTopicalRelevanceFilter(title, rawDesc, {
+      source: sourceName,
+      category,
+      region,
+      link
+    })) {
+      return false;
+    }
+
     await Article.create({
       title,
       description: buildArticleSummary(title, rawDesc),
@@ -1610,6 +1618,19 @@ export const fetchNewsAPI = async (
     if (data.articles) {
       for (const item of data.articles) {
         try {
+          const itemTitle = item.title || '';
+          const itemDesc = item.description || item.content || '';
+          const itemSource = item.source?.name || 'NewsAPI';
+          const itemLink = item.url || '';
+
+          if (!passesTopicalRelevanceFilter(itemTitle, itemDesc, {
+            source: itemSource,
+            category: ['space', 'news'],
+            link: itemLink
+          })) {
+            continue;
+          }
+
           const existingArticle = await Article.findOne({ where: { link: item.url } });
           if (existingArticle) {
             if (item.urlToImage && isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)) {
@@ -1620,20 +1641,20 @@ export const fetchNewsAPI = async (
           }
 
           await Article.create({
-            title: item.title,
-            description: buildArticleSummary(item.title, item.description || item.content || ''),
+            title: itemTitle,
+            description: buildArticleSummary(itemTitle, itemDesc),
             link: item.url,
             pubDate: new Date(item.publishedAt),
-            source: item.source.name,
+            source: itemSource,
             category: ['space', 'news'],
-            imageUrl: resolveArticleImageUrl(item.title, item.urlToImage),
+            imageUrl: resolveArticleImageUrl(itemTitle, item.urlToImage),
             isFeatured: false,
-            priority: calculateArticlePriority(item.title, item.description || item.content || '', {
-              source: item.source.name,
+            priority: calculateArticlePriority(itemTitle, itemDesc, {
+              source: itemSource,
               category: ['space', 'news'],
               link: item.url
             }),
-            titleHash: computeTitleHash(item.title)
+            titleHash: computeTitleHash(itemTitle)
           });
         } catch (error) {
           console.error('Error saving NewsAPI article:', error);

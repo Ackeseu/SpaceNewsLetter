@@ -46,6 +46,8 @@ const emailSendTimeoutMs = Number(process.env.EMAIL_SEND_TIMEOUT_MS || 180000);
 const emailBeginSendTimeoutMs = Number(process.env.EMAIL_BEGIN_SEND_TIMEOUT_MS || 60000);
 const imageFetchTimeoutMs = Number(process.env.IMAGE_FETCH_TIMEOUT_MS || 10000);
 const aiImageGenerationTimeoutMs = Number(process.env.AI_IMAGE_GENERATION_TIMEOUT_MS || 12000);
+const emailPayloadSoftLimitBytes = Number(process.env.EMAIL_PAYLOAD_SOFT_LIMIT_BYTES || 9_500_000);
+const forceExternalImagesOnly = (process.env.EMAIL_FORCE_EXTERNAL_IMAGES || 'false').toLowerCase() === 'true';
 
 const lastEmailErrorByRecipient = new Map<string, string>();
 
@@ -452,6 +454,32 @@ const loadLogoBase64 = (): string => {
   } catch {
     return TRANSPARENT_PIXEL_BASE64;
   }
+};
+
+const estimateAttachmentPayloadBytes = (attachment: EmailAttachment): number => {
+  return Buffer.byteLength(attachment.name, 'utf8')
+    + Buffer.byteLength(attachment.contentType, 'utf8')
+    + Buffer.byteLength(attachment.contentInBase64, 'utf8')
+    + Buffer.byteLength(attachment.contentId || '', 'utf8')
+    + 256;
+};
+
+const estimateEmailPayloadBytes = (
+  to: string,
+  subject: string,
+  htmlContent: string,
+  attachments?: EmailAttachment[]
+): number => {
+  const baseBytes = Buffer.byteLength(to, 'utf8')
+    + Buffer.byteLength(subject, 'utf8')
+    + Buffer.byteLength(htmlContent, 'utf8')
+    + 1024;
+
+  const attachmentBytes = (attachments || []).reduce((sum, attachment) => {
+    return sum + estimateAttachmentPayloadBytes(attachment);
+  }, 0);
+
+  return baseBytes + attachmentBytes;
 };
 
 const buildInlineArticleAttachment = async (
@@ -873,11 +901,12 @@ export const sendNewsletterEmail = async (
       : article.description;
     const hasExternalImage = isRenderableSourceImageUrl(article?.imageUrl);
     const titleClass = hasExternalImage ? 'article-title-box' : 'article-title-box text-only';
+    const normalizedExternalImageUrl = hasExternalImage ? normalizeImageUrlForFetch(article.imageUrl) : '';
 
     return `
           <div class="article">
             <div class="${titleClass}"><h3>${article.title}</h3></div>
-            ${hasExternalImage ? `<img src="${article.imageUrl}" alt="${article.title}">` : ''}
+            ${hasExternalImage ? `<img src="${normalizedExternalImageUrl}" alt="${article.title}">` : ''}
             <p>${description}</p>
             <p><a href="${article.link}" class="read-more">Read more →</a></p>
             <p style="font-size: 12px; color: #666;">Source: ${article.source} | ${new Date(article.pubDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
@@ -926,7 +955,7 @@ export const sendNewsletterEmail = async (
     <body>
       <div class="container">
         <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
-          <img src="cid:${logoCid}" alt="OASA NewSpace Newsletter" class="header-logo">
+          <img src="{{LOGO_SRC}}" alt="OASA NewSpace Newsletter" class="header-logo">
           <h1>OASA NewSpace Newsletter</h1>
           <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Curated NewSpace summaries from around the world, for our members only</p>
         </div>
@@ -943,23 +972,61 @@ export const sendNewsletterEmail = async (
     </html>
   `;
 
-  const htmlContent = renderNewsletterHtml(
+  const renderNewsletterHtmlWithLogo = (sectionMarkup: string, logoSrc: string): string => {
+    return renderNewsletterHtml(sectionMarkup).replace('{{LOGO_SRC}}', logoSrc);
+  };
+
+  const subject = `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+
+  if (forceExternalImagesOnly) {
+    const logoUrl = `${appUrl.replace(/\/$/, '')}/oasa-banner.png`;
+    const externalOnlyHtml = renderNewsletterHtmlWithLogo(
+      renderSections(
+        renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
+        renderExternalArticleBlocks(sourceArticles.map(({ article }) => article))
+      ),
+      logoUrl
+    );
+
+    return await sendEmail({
+      to: email,
+      subject,
+      htmlContent: externalOnlyHtml,
+      attachments: []
+    });
+  }
+
+  const htmlContent = renderNewsletterHtmlWithLogo(
     renderSections(
       renderInlineArticleBlocks(oasaArticles, { preserveOasaText: true }),
       renderInlineArticleBlocks(sourceArticles)
-    )
+    ),
+    `cid:${logoCid}`
   );
 
-  const sentWithInlineImages = await sendEmail({
-    to: email,
-    subject: `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    htmlContent,
-    attachments
-  });
+  const tryNewsletterVariant = async (
+    variantName: string,
+    variantHtml: string,
+    variantAttachments?: EmailAttachment[]
+  ): Promise<boolean> => {
+    const payloadEstimate = estimateEmailPayloadBytes(email, subject, variantHtml, variantAttachments);
+    console.log(`Newsletter variant ${variantName} estimated payload: ${payloadEstimate} bytes`);
 
-  if (sentWithInlineImages) {
-    return true;
-  }
+    if (payloadEstimate > emailPayloadSoftLimitBytes) {
+      console.warn(`Skipping newsletter variant ${variantName} for ${email}; estimated payload ${payloadEstimate} exceeds soft limit ${emailPayloadSoftLimitBytes}`);
+      return false;
+    }
+
+    return await sendEmail({
+      to: email,
+      subject,
+      htmlContent: variantHtml,
+      attachments: variantAttachments
+    });
+  };
+
+  const sentWithInlineImages = await tryNewsletterVariant('full-inline', htmlContent, attachments);
+  if (sentWithInlineImages) return true;
 
   // If inline/cached attachments fail provider validation, retry with external image URLs.
   console.warn(`Retrying newsletter send to ${email} with reduced inline attachments (OASA only)`);
@@ -969,7 +1036,7 @@ export const sendNewsletterEmail = async (
     .map((item) => item.attachment)
     .filter((attachment): attachment is EmailAttachment => Boolean(attachment));
 
-  const fallbackHtmlContent = renderNewsletterHtml(
+  const fallbackHtmlContent = renderNewsletterHtmlWithLogo(
     renderSections(
       renderInlineArticleBlocks(oasaArticles, { preserveOasaText: true }),
       renderExternalArticleBlocks(
@@ -977,7 +1044,8 @@ export const sendNewsletterEmail = async (
           .filter((article) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE)
           .sort((a, b) => getPublishedTimestamp(b?.pubDate) - getPublishedTimestamp(a?.pubDate))
       )
-    )
+    ),
+    `cid:${logoCid}`
   );
   const minimalAttachments: EmailAttachment[] = [
     {
@@ -989,10 +1057,45 @@ export const sendNewsletterEmail = async (
     ...oasaInlineAttachments
   ];
 
+  const sentWithReducedInline = await tryNewsletterVariant('oasa-inline-only', fallbackHtmlContent, minimalAttachments);
+  if (sentWithReducedInline) return true;
+
+  // Final resilience path: no inline article images.
+  console.warn(`Retrying newsletter send to ${email} with external images only`);
+
+  const fullyExternalHtmlWithCidLogo = renderNewsletterHtmlWithLogo(
+    renderSections(
+      renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
+      renderExternalArticleBlocks(sourceArticles.map(({ article }) => article))
+    ),
+    `cid:${logoCid}`
+  );
+
+  const sentWithLogoOnly = await tryNewsletterVariant('external-images-logo-inline', fullyExternalHtmlWithCidLogo, [
+    {
+      name: 'oasa-banner.png',
+      contentType: 'image/png',
+      contentInBase64: logoBase64,
+      contentId: logoCid
+    }
+  ]);
+  if (sentWithLogoOnly) return true;
+
+  console.warn(`Retrying newsletter send to ${email} with zero attachments`);
+
+  const logoUrl = `${appUrl.replace(/\/$/, '')}/oasa-banner.png`;
+  const fullyExternalHtmlNoAttachments = renderNewsletterHtmlWithLogo(
+    renderSections(
+      renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
+      renderExternalArticleBlocks(sourceArticles.map(({ article }) => article))
+    ),
+    logoUrl
+  );
+
   return await sendEmail({
     to: email,
-    subject: `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    htmlContent: fallbackHtmlContent,
-    attachments: minimalAttachments
+    subject,
+    htmlContent: fullyExternalHtmlNoAttachments,
+    attachments: []
   });
 };

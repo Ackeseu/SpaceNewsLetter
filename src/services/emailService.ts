@@ -110,7 +110,7 @@ const fetchWithTimeout = async (
   }
 };
 
-const normalizeRecipientKey = (email: string): string => email.trim().toLowerCase();
+const normalizeRecipientKey = (email: string): string => String(email || '').trim().toLowerCase();
 
 const rememberEmailSendError = (recipient: string, message: string): void => {
   lastEmailErrorByRecipient.set(normalizeRecipientKey(recipient), message);

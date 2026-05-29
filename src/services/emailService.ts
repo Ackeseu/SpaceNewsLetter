@@ -456,7 +456,23 @@ const loadLogoBase64 = (): string => {
   }
 };
 
-const estimateAttachmentPayloadBytes = (attachment: EmailAttachment): number => {
+const isValidAttachment = (attachment: Partial<EmailAttachment> | null | undefined): attachment is EmailAttachment => {
+  return Boolean(
+    attachment
+    && typeof attachment.name === 'string'
+    && attachment.name.length > 0
+    && typeof attachment.contentType === 'string'
+    && attachment.contentType.length > 0
+    && typeof attachment.contentInBase64 === 'string'
+    && attachment.contentInBase64.length > 0
+  );
+};
+
+const estimateAttachmentPayloadBytes = (attachment: Partial<EmailAttachment> | null | undefined): number => {
+  if (!isValidAttachment(attachment)) {
+    return 0;
+  }
+
   return Buffer.byteLength(attachment.name, 'utf8')
     + Buffer.byteLength(attachment.contentType, 'utf8')
     + Buffer.byteLength(attachment.contentInBase64, 'utf8')
@@ -468,7 +484,7 @@ const estimateEmailPayloadBytes = (
   to: string,
   subject: string,
   htmlContent: string,
-  attachments?: EmailAttachment[]
+  attachments?: Array<Partial<EmailAttachment> | null | undefined>
 ): number => {
   const baseBytes = Buffer.byteLength(to, 'utf8')
     + Buffer.byteLength(subject, 'utf8')
@@ -1017,7 +1033,12 @@ export const sendNewsletterEmail = async (
     variantHtml: string,
     variantAttachments?: EmailAttachment[]
   ): Promise<boolean> => {
-    const payloadEstimate = estimateEmailPayloadBytes(email, subject, variantHtml, variantAttachments);
+    const safeAttachments = (variantAttachments || []).filter(isValidAttachment);
+    if (safeAttachments.length !== (variantAttachments || []).length) {
+      console.warn(`Dropping ${(variantAttachments || []).length - safeAttachments.length} invalid attachment(s) for ${email} (${variantName})`);
+    }
+
+    const payloadEstimate = estimateEmailPayloadBytes(email, subject, variantHtml, safeAttachments);
     console.log(`Newsletter variant ${variantName} estimated payload: ${payloadEstimate} bytes`);
 
     if (payloadEstimate > emailPayloadSoftLimitBytes) {
@@ -1029,7 +1050,7 @@ export const sendNewsletterEmail = async (
       to: email,
       subject,
       htmlContent: variantHtml,
-      attachments: variantAttachments
+      attachments: safeAttachments
     });
   };
 

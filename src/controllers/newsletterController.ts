@@ -1331,9 +1331,6 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
     });
 
     const latestCreatedAt = latestArticle?.createdAt ? new Date(latestArticle.createdAt) : null;
-    const minutesSinceLatestArticle = latestCreatedAt
-      ? Math.floor((Date.now() - latestCreatedAt.getTime()) / (1000 * 60))
-      : null;
 
     const last72Hours = new Date(Date.now() - 72 * 60 * 60 * 1000);
     const [
@@ -1567,18 +1564,42 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       failed: Number(row.failed)
     }));
 
+    const latestSourceCreatedAt = sourcesBreakdownRaw
+      .map((row) => new Date(row.latestCreatedAt))
+      .filter((value) => Number.isFinite(value.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime())[0] || null;
+
+    const effectiveLatestCreatedAt = latestCreatedAt || latestSourceCreatedAt;
+    const minutesSinceLatestArticle = effectiveLatestCreatedAt
+      ? Math.floor((Date.now() - effectiveLatestCreatedAt.getTime()) / (1000 * 60))
+      : null;
+
     const healthy =
       latestCreatedAt !== null &&
       minutesSinceLatestArticle !== null &&
       minutesSinceLatestArticle <= staleThresholdMinutes;
 
-    const minutesSinceDailySuccess = latestDailySuccess?.deliveredAt
+    let minutesSinceDailySuccess = latestDailySuccess?.deliveredAt
       ? Math.floor((now - new Date(latestDailySuccess.deliveredAt).getTime()) / (1000 * 60))
       : null;
 
-    const minutesSinceWeeklySuccess = latestWeeklySuccess?.deliveredAt
+    let minutesSinceWeeklySuccess = latestWeeklySuccess?.deliveredAt
       ? Math.floor((now - new Date(latestWeeklySuccess.deliveredAt).getTime()) / (1000 * 60))
       : null;
+
+    if (minutesSinceDailySuccess === null) {
+      const latestDailyTimelineRun = runTimeline.find((row) => row.frequency === 'daily' && row.succeeded > 0);
+      if (latestDailyTimelineRun) {
+        minutesSinceDailySuccess = Math.floor((now - new Date(latestDailyTimelineRun.runAt).getTime()) / (1000 * 60));
+      }
+    }
+
+    if (minutesSinceWeeklySuccess === null) {
+      const latestWeeklyTimelineRun = runTimeline.find((row) => row.frequency === 'weekly' && row.succeeded > 0);
+      if (latestWeeklyTimelineRun) {
+        minutesSinceWeeklySuccess = Math.floor((now - new Date(latestWeeklyTimelineRun.runAt).getTime()) / (1000 * 60));
+      }
+    }
 
     const dailyWorkflowHealthy =
       dailySubscribers === 0
@@ -1744,7 +1765,7 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
             id: latestArticle.id,
             source: latestArticle.source,
             title: latestArticle.title,
-            createdAt: latestCreatedAt?.toISOString()
+            createdAt: effectiveLatestCreatedAt?.toISOString()
           }
         : null,
       minutesSinceLatestArticle,

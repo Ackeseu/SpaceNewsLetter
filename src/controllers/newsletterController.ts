@@ -706,10 +706,17 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
 
     const preferredSubscriber = matchingSubscribers.find((item) => item.isActive && item.isVerified);
     const subscriber = preferredSubscriber || matchingSubscribers[0];
+    const recipientEmail = String(subscriber.email || normalizedEmail).trim().toLowerCase();
+
+    if (!recipientEmail) {
+      res.status(500).json({ error: 'Failed to resolve recipient email for test newsletter' });
+      return;
+    }
 
     if (!subscriber.isActive || !subscriber.isVerified) {
       console.warn('sendTestNewsletter: using subscriber with non-active or non-verified status', {
         requestedEmail: normalizedEmail,
+        resolvedRecipientEmail: recipientEmail,
         selectedSubscriberId: subscriber.id,
         selectedIsActive: subscriber.isActive,
         selectedIsVerified: subscriber.isVerified,
@@ -760,16 +767,16 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
 
     const preferencesToken = await ensurePreferencesToken(subscriber);
     const emailSent = await sendNewsletterEmail(
-      subscriber.email,
+      recipientEmail,
       articles,
       subscriber.unsubscribeToken,
       preferencesToken,
       effectiveFrequency
     );
     if (!emailSent) {
-      const sendError = consumeLastEmailSendError(subscriber.email) || 'Email service returned unsuccessful status';
+      const sendError = consumeLastEmailSendError(recipientEmail) || 'Email service returned unsuccessful status';
       await recordDeliveryAttempt({
-        email: subscriber.email,
+        email: recipientEmail,
         triggerType: 'test',
         frequency: effectiveFrequency,
         success: false,
@@ -779,14 +786,14 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       res.status(500).json({
         error: 'Failed to send test newsletter',
         detail: sendError,
-        recipient: subscriber.email,
+        recipient: recipientEmail,
         subscriberId: subscriber.id
       });
       return;
     }
 
     await recordDeliveryAttempt({
-      email: subscriber.email,
+      email: recipientEmail,
       triggerType: 'test',
       frequency: effectiveFrequency,
       success: true,
@@ -795,7 +802,7 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
 
     res.status(200).json({
       message: 'Test newsletter sent',
-      recipient: subscriber.email,
+      recipient: recipientEmail,
       subscriberStatus: {
         id: subscriber.id,
         isActive: subscriber.isActive,

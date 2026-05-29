@@ -1575,7 +1575,7 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       : null;
 
     const healthy =
-      latestCreatedAt !== null &&
+      effectiveLatestCreatedAt !== null &&
       minutesSinceLatestArticle !== null &&
       minutesSinceLatestArticle <= staleThresholdMinutes;
 

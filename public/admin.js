@@ -346,6 +346,11 @@ async function loadMonitorStatus() {
     const attemptFailureRate = typeof data?.deliveryOutcome?.attemptFailureRateLast24h === 'number'
       ? `${(data.deliveryOutcome.attemptFailureRateLast24h * 100).toFixed(1)}%`
       : '-';
+    const testFailureRatio = typeof data?.testDeliveryHealth?.failureRatioLast24h === 'number'
+      ? `${(data.testDeliveryHealth.failureRatioLast24h * 100).toFixed(1)}%`
+      : '-';
+    const testDeliveryCount = Number(data?.testDeliveryHealth?.deliveriesLast24h || 0);
+    const failedTestDeliveryCount = Number(data?.testDeliveryHealth?.failedDeliveriesLast24h || 0);
     const runTimeline = Array.isArray(data?.runTimeline) ? data.runTimeline : [];
     const topFailureReasons = Array.isArray(data?.failureTrends?.topFailureReasons)
       ? data.failureTrends.topFailureReasons
@@ -373,8 +378,16 @@ async function loadMonitorStatus() {
         <div class="monitor-value">${data.subscribers?.weekly ?? 0}</div>
       </div>
       <div class="monitor-card">
-        <div class="monitor-label">Delivery Failure (24h, Scoped)</div>
+        <div class="monitor-label">Scheduled Failure (24h, Scoped)</div>
         <div class="monitor-value">${failureRatio}</div>
+      </div>
+      <div class="monitor-card">
+        <div class="monitor-label">Test Failure (24h)</div>
+        <div class="monitor-value">${testFailureRatio}</div>
+      </div>
+      <div class="monitor-card">
+        <div class="monitor-label">Test Sends (24h)</div>
+        <div class="monitor-value">${failedTestDeliveryCount}/${testDeliveryCount} failed</div>
       </div>
       <div class="monitor-card">
         <div class="monitor-label">Ignored Demo/Test (24h)</div>

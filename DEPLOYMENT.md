@@ -5,7 +5,7 @@
 - API App Service: `newspace-newsletter-api`
 - Function App: `newspacenewsletter-func`
 - Resource Group: `newspace-newsletter-rg`
-- Runtime: Node.js 20 LTS
+- Runtime: Node.js 22 LTS
 
 ## CI/CD (GitHub Actions)
 
@@ -26,6 +26,8 @@ Set in Azure App Service (`newspace-newsletter-api`):
 - `PORT=8080`
 - DB settings (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL`)
 - Email settings (`AZURE_COMMUNICATION_CONNECTION_STRING`, `SENDER_EMAIL`)
+- Optional email recovery setting:
+  - `EMAIL_FORCE_EXTERNAL_IMAGES=true` (skip inline attachments and send external-image newsletters only when ACS payload limits are still blocking delivery)
 - App URL (`APP_URL`)
 - Tokens:
   - `ADMIN_TEST_TOKEN`
@@ -34,6 +36,8 @@ Set in Azure App Service (`newspace-newsletter-api`):
   - `MONITOR_TOKEN`
   - `MONITOR_ALERT_EMAILS`
   - `MONITOR_MAX_STALE_MINUTES` (recommended `2880` for filtered daily aggregation cadence)
+- Email payload guard (optional, recommended):
+  - `EMAIL_PAYLOAD_SOFT_LIMIT_BYTES` (default `9500000` — sends auto-downgrade through fallback tiers below this byte estimate to stay under the ACS 10 MB hard limit)
 - Image settings (optional):
   - `TITLE_IMAGE_GENERATION_ENABLED`
   - `AI_IMAGE_PROVIDER`

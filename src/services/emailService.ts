@@ -805,8 +805,12 @@ export const sendNewsletterEmail = async (
         ? 'Monthly Edition'
         : '';
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const siteUrl = appUrl.replace(/\/$/, '');
+  const issueDateLabel = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const subject = `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${issueDateLabel}`;
   const unsubscribeUrl = `${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
   const preferencesUrl = `${appUrl}/api/subscriptions/preferences/${preferencesToken}`;
+  const forwardUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Thought you might like this issue of the OASA NewSpace Newsletter.\n\nVisit ${siteUrl} to explore more and subscribe.`)}`;
   const logoCid = 'oasa-header-logo';
   const logoBase64 = loadLogoBase64();
 
@@ -949,6 +953,8 @@ export const sendNewsletterEmail = async (
         .read-more { color: #2563eb; text-decoration: none; font-weight: 600; }
         .footer { margin-top: 30px; padding: 20px; border-top: 1px solid #e5e7eb; background: #f9fafb; font-size: 12px; color: #6b7280; text-align: center; }
         .footer a { color: #2563eb; text-decoration: none; }
+        .footer-actions { margin: 18px 0 14px; }
+        .footer-action-link { display: inline-block; margin: 6px 8px; padding: 10px 16px; border: 1px solid #d1d5db; border-radius: 999px; background: #ffffff; color: #111827 !important; font-size: 13px; font-weight: 600; text-decoration: none; }
         .disclaimer { margin-top: 16px; font-size: 10px; line-height: 1.5; color: #9ca3af; text-align: left; }
       </style>
     </head>
@@ -964,6 +970,10 @@ export const sendNewsletterEmail = async (
         
         <div class="footer">
           <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
+          <div class="footer-actions">
+            <a href="${forwardUrl}" class="footer-action-link">Forward to a friend</a>
+            <a href="${siteUrl}" class="footer-action-link">Visit our website</a>
+          </div>
           <p><a href="${preferencesUrl}">Manage preferences</a> | <a href="${unsubscribeUrl}">Unsubscribe</a></p>
           <p class="disclaimer">This communication (and any attachments) is directed in confidence to the addressee(s) listed above, and may not otherwise be distributed, copied or used. The contents of this communication may also be subject to privilege, and all rights to that privilege are expressly claimed and not waived. If you have received this communication in error, please notify us by reply e-mail or by telephone and delete this communication (and any attachments) without making a copy. Before opening or using attachments, you should check them for viruses and defects. We do not accept liability in connection with computer virus, data corruption, delay, interruption, unauthorized access or unauthorized amendment.  本電郵(連同任何附加檔案)只供指定收件人閱讀，內容可能包括只有指定收件人才有權接收的資料。如你並非本電郵的原定收件人，請勿使用、保留、披露、複製、列印、轉發或發放本電郵。如本電郵誤發給你，請從電腦系統刪除本電郵所有複本(包括附加檔案)，並立即通知發件人。 創星匯並不宣稱或保證本電郵不含軟件病毒，也不宣稱或保證本電郵所載資料準確、真實和完整。 如本電郵的指定收件人或其他人因本電郵含有軟件病毒或因本電郵所載資料不準確、不真實或不完整而蒙受損害或損失，創星匯概不承擔法律責任。</p>
         </div>
@@ -976,10 +986,8 @@ export const sendNewsletterEmail = async (
     return renderNewsletterHtml(sectionMarkup).replace('{{LOGO_SRC}}', logoSrc);
   };
 
-  const subject = `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-
   if (forceExternalImagesOnly) {
-    const logoUrl = `${appUrl.replace(/\/$/, '')}/oasa-banner.png`;
+    const logoUrl = `${siteUrl}/oasa-banner.png`;
     const externalOnlyHtml = renderNewsletterHtmlWithLogo(
       renderSections(
         renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),

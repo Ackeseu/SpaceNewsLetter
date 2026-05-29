@@ -51,7 +51,7 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 
 ## Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22+ and npm
 - Azure account with:
   - Azure Database for PostgreSQL
   - Azure Communication Services
@@ -110,6 +110,14 @@ HUGGINGFACE_IMAGE_ENDPOINT=
 # Optional: image cache tuning
 IMAGE_CACHE_TTL_HOURS=336
 IMAGE_CACHE_PLACEHOLDER_TTL_HOURS=6
+
+# Optional: email payload size guard (bytes). Sends auto-downgrade to lower-fidelity
+# fallback tiers when the estimated payload exceeds this limit (ACS hard limit: 10 MB).
+EMAIL_PAYLOAD_SOFT_LIMIT_BYTES=9500000
+
+# Emergency override: skip inline attachments and force external images only.
+# Useful when ACS payload size limits are still being hit under load.
+EMAIL_FORCE_EXTERNAL_IMAGES=false
 
 # Admin & monitor tokens
 ADMIN_TEST_TOKEN=your-admin-token
@@ -251,7 +259,7 @@ az webapp create \
   --name newspace-newsletter-api \
   --resource-group newspace-newsletter-rg \
   --plan newspace-newsletter-plan \
-  --runtime "NODE:20-lts"
+  --runtime "NODE:22-lts"
 
 # Configure environment variables
 az webapp config appsettings set \
@@ -309,7 +317,7 @@ az functionapp create \
   --resource-group newspace-newsletter-rg \
   --consumption-plan-location eastus \
   --runtime node \
-  --runtime-version 18 \
+  --runtime-version 20 \
   --functions-version 4
 
 # Deploy functions
@@ -352,12 +360,11 @@ az webapp log tail --name newspace-newsletter-api --resource-group newspace-news
 - ✅ Helmet.js for security headers
 - ✅ Email verification
 - ✅ Secure unsubscribe tokens
-- ⚠️ TODO: Rate limiting
+- ✅ Rate limiting (express-rate-limit on subscription and test-send endpoints)
 - ⚠️ TODO: API authentication for admin endpoints
 
 ## Next Steps / Enhancements
 
-- [ ] Implement rate limiting
 - [ ] Add analytics tracking
 - [ ] Improve delivery telemetry dashboards
 - [ ] Add webhook support for external integrations
@@ -365,6 +372,10 @@ az webapp log tail --name newspace-newsletter-api --resource-group newspace-news
 
 ## Operational Changelog
 
+- **2026-05-07**: Upgraded runtime to Node.js 22 LTS (Node 20 reached EOL 2026-04-30). Updated CI workflow, App Service stack, and TypeScript target (`ES2022`).
+- **2026-05-07**: Added automatic email payload size guard (`EMAIL_PAYLOAD_SOFT_LIMIT_BYTES`). Newsletter sends now auto-downgrade through four fallback tiers (full inline → OASA inline only → external images with logo → zero attachments) to stay under the ACS 10 MB hard limit.
+- **2026-05-07**: Fixed OASA section images not rendering in external-image fallback tiers. Wix CDN transform URLs (`/v1/fill/…`) are now normalised before being embedded in `<img src>` to avoid 403 responses in email clients.
+- **2026-05-13**: Added emergency `EMAIL_FORCE_EXTERNAL_IMAGES` override to skip inline attachments entirely when payload size limits still block delivery. This is the production recovery path used during the ACS 10 MB incident.
 - **2026-03-05**: Added recipient-level newsletter delivery logging (`newsletter_delivery_logs`) and monitor query endpoint: `/api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD`.
 - **2026-03-05**: Suspended title-based generated imagery by default via `TITLE_IMAGE_GENERATION_ENABLED=false`.
 - **2026-03-05**: Updated Azure App Service runtime guidance to use startup command `npm start` for prebuilt package deployments.

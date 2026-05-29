@@ -1267,6 +1267,11 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       deliveredAt: { [Op.gte]: last24Hours }
     };
 
+    const baseTestWhere: Record<string, unknown> = {
+      triggerType: 'test',
+      deliveredAt: { [Op.gte]: last24Hours }
+    };
+
     const scopedScheduledWhere: Record<string, unknown> = excludedEmailPatterns.length > 0
       ? {
           ...baseScheduledWhere,
@@ -1297,6 +1302,8 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       failedDeliveriesLast24h,
       allDeliveriesLast24h,
       allFailedDeliveriesLast24h,
+      testDeliveriesLast24h,
+      failedTestDeliveriesLast24h,
       sourcesBreakdownRaw
     ] = await Promise.all([
       Article.count({ where: { createdAt: { [Op.gte]: last24Hours } } }),
@@ -1334,6 +1341,15 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       NewsletterDeliveryLog.count({
         where: {
           ...baseScheduledWhere,
+          success: false
+        }
+      }),
+      NewsletterDeliveryLog.count({
+        where: baseTestWhere
+      }),
+      NewsletterDeliveryLog.count({
+        where: {
+          ...baseTestWhere,
           success: false
         }
       }),
@@ -1535,6 +1551,11 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         : 0;
 
     const emailDeliveryHealthy = failureRatioLast24h < 0.8;
+    const testFailureRatioLast24h =
+      testDeliveriesLast24h > 0
+        ? failedTestDeliveriesLast24h / testDeliveriesLast24h
+        : 0;
+    const testDeliveryHealthy = testDeliveriesLast24h === 0 || testFailureRatioLast24h < 0.8;
 
     const ignoredDeliveriesLast24h = Math.max(allDeliveriesLast24h - deliveriesLast24h, 0);
     const ignoredFailedDeliveriesLast24h = Math.max(allFailedDeliveriesLast24h - failedDeliveriesLast24h, 0);
@@ -1647,16 +1668,26 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
               : `Last successful weekly delivery ${minutesSinceWeeklySuccess} minute(s) ago`)
       },
       {
-        id: 'email-delivery',
-        label: 'Email Delivery Health',
+        id: 'email-delivery-scheduled',
+        label: 'Email Delivery Health (Scheduled)',
         up: emailDeliveryHealthy,
         detail: deliveriesLast24h === 0
           ? 'No scheduled deliveries in the last 24 hours'
           : `${failedDeliveriesLast24h}/${deliveriesLast24h} scheduled deliveries failed in last 24 hours (impacted recipients: ${recipientsWithoutFinalSuccess}; daily: ${impactedRecipientsByFrequency.daily}, weekly: ${impactedRecipientsByFrequency.weekly})`
+      },
+      {
+        id: 'email-delivery-test',
+        label: 'Email Delivery Health (Test Sends)',
+        up: testDeliveryHealthy,
+        detail: testDeliveriesLast24h === 0
+          ? 'No test sends in the last 24 hours'
+          : `${failedTestDeliveriesLast24h}/${testDeliveriesLast24h} test sends failed in last 24 hours`
       }
     ];
 
-    const overallUp = services.every(service => service.up);
+    const overallUp = services
+      .filter((service) => service.id !== 'email-delivery-test')
+      .every(service => service.up);
 
     res.status(200).json({
       overallUp,
@@ -1699,6 +1730,11 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         allFailedDeliveriesLast24h,
         ignoredDeliveriesLast24h,
         ignoredFailedDeliveriesLast24h
+      },
+      testDeliveryHealth: {
+        deliveriesLast24h: testDeliveriesLast24h,
+        failedDeliveriesLast24h: failedTestDeliveriesLast24h,
+        failureRatioLast24h: testFailureRatioLast24h
       },
       realRecipientRisk: {
         lookbackHours: realRecipientLookbackHours,

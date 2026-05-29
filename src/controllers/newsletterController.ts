@@ -60,6 +60,16 @@ const ensurePreferencesToken = async (subscriber: Subscriber): Promise<string> =
   return subscriber.preferencesToken;
 };
 
+const ensureUnsubscribeToken = async (subscriber: Subscriber): Promise<string> => {
+  if (subscriber.unsubscribeToken) {
+    return subscriber.unsubscribeToken;
+  }
+
+  subscriber.unsubscribeToken = crypto.randomBytes(32).toString('hex');
+  await subscriber.save();
+  return subscriber.unsubscribeToken;
+};
+
 const normalizeTopicToken = (value: unknown): string => String(value || '').toLowerCase().trim();
 
 const TOPIC_CATEGORY_ALIASES: Record<string, string[]> = {
@@ -766,10 +776,11 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
     );
 
     const preferencesToken = await ensurePreferencesToken(subscriber);
+    const unsubscribeToken = await ensureUnsubscribeToken(subscriber);
     const emailSent = await sendNewsletterEmail(
       recipientEmail,
       articles,
-      subscriber.unsubscribeToken,
+      unsubscribeToken,
       preferencesToken,
       effectiveFrequency
     );

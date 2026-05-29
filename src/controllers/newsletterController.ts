@@ -60,7 +60,7 @@ const ensurePreferencesToken = async (subscriber: Subscriber): Promise<string> =
   return subscriber.preferencesToken;
 };
 
-const normalizeTopicToken = (value: string): string => value.toLowerCase().trim();
+const normalizeTopicToken = (value: unknown): string => String(value || '').toLowerCase().trim();
 
 const TOPIC_CATEGORY_ALIASES: Record<string, string[]> = {
   general: [],
@@ -94,8 +94,12 @@ const mapTopicsToCategoryFilters = (topics: string[]): string[] => {
 
 const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> => {
   const whereClause: Record<string, unknown> = {};
-  const regions = subscriber.regions || [];
-  const topics = subscriber.topics || [];
+  const regions = Array.isArray(subscriber.regions)
+    ? subscriber.regions.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const topics = Array.isArray(subscriber.topics)
+    ? subscriber.topics.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
 
   if (regions.length > 0 && !regions.includes('global')) {
     whereClause.region = { [Op.in]: regions };

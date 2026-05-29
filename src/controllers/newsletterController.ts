@@ -675,20 +675,49 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
     }
 
     const { email } = req.body as { email: string };
-    const subscriber = await Subscriber.findOne({ where: { email } });
-    if (!subscriber) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      res.status(400).json({ error: 'Email is required' });
+      return;
+    }
+
+    const matchingSubscribers = await Subscriber.findAll({
+      where: {
+        email: { [Op.iLike]: normalizedEmail }
+      },
+      order: [
+        ['isActive', 'DESC'],
+        ['isVerified', 'DESC'],
+        ['updatedAt', 'DESC'],
+        ['id', 'DESC']
+      ],
+      limit: 10
+    });
+
+    if (matchingSubscribers.length === 0) {
       res.status(404).json({ error: 'Subscriber not found' });
       return;
     }
 
-    if (!subscriber.isActive) {
-      res.status(400).json({ error: 'Subscriber is inactive' });
-      return;
-    }
+    const preferredSubscriber = matchingSubscribers.find((item) => item.isActive && item.isVerified);
+    const subscriber = preferredSubscriber || matchingSubscribers[0];
 
-    if (!subscriber.isVerified) {
-      res.status(400).json({ error: 'Subscriber is not verified' });
-      return;
+    if (!subscriber.isActive || !subscriber.isVerified) {
+      console.warn('sendTestNewsletter: using subscriber with non-active or non-verified status', {
+        requestedEmail: normalizedEmail,
+        selectedSubscriberId: subscriber.id,
+        selectedIsActive: subscriber.isActive,
+        selectedIsVerified: subscriber.isVerified,
+        matchedCount: matchingSubscribers.length,
+        matchedPreview: matchingSubscribers.slice(0, 3).map((item) => ({
+          id: item.id,
+          email: item.email,
+          isActive: item.isActive,
+          isVerified: item.isVerified,
+          updatedAt: item.updatedAt
+        }))
+      });
     }
 
     const preferenceWhere = buildPreferenceWhere(subscriber);
@@ -755,7 +784,15 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       articleCount: articles.length
     });
 
-    res.status(200).json({ message: 'Test newsletter sent' });
+    res.status(200).json({
+      message: 'Test newsletter sent',
+      recipient: subscriber.email,
+      subscriberStatus: {
+        id: subscriber.id,
+        isActive: subscriber.isActive,
+        isVerified: subscriber.isVerified
+      }
+    });
   } catch (error) {
     console.error('Send test newsletter error:', error);
     res.status(500).json({ error: 'Failed to send test newsletter' });

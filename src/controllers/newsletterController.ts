@@ -772,7 +772,12 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
         errorMessage: sendError,
         articleCount: articles.length
       });
-      res.status(500).json({ error: 'Failed to send test newsletter' });
+      res.status(500).json({
+        error: 'Failed to send test newsletter',
+        detail: sendError,
+        recipient: subscriber.email,
+        subscriberId: subscriber.id
+      });
       return;
     }
 
@@ -795,7 +800,10 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
     });
   } catch (error) {
     console.error('Send test newsletter error:', error);
-    res.status(500).json({ error: 'Failed to send test newsletter' });
+    res.status(500).json({
+      error: 'Failed to send test newsletter',
+      detail: error instanceof Error ? error.message : String(error)
+    });
   }
 };
 

@@ -473,10 +473,10 @@ const estimateAttachmentPayloadBytes = (attachment: Partial<EmailAttachment> | n
     return 0;
   }
 
-  return Buffer.byteLength(attachment.name, 'utf8')
-    + Buffer.byteLength(attachment.contentType, 'utf8')
-    + Buffer.byteLength(attachment.contentInBase64, 'utf8')
-    + Buffer.byteLength(attachment.contentId || '', 'utf8')
+  return Buffer.byteLength(String(attachment.name || ''), 'utf8')
+    + Buffer.byteLength(String(attachment.contentType || ''), 'utf8')
+    + Buffer.byteLength(String(attachment.contentInBase64 || ''), 'utf8')
+    + Buffer.byteLength(String(attachment.contentId || ''), 'utf8')
     + 256;
 };
 
@@ -486,9 +486,9 @@ const estimateEmailPayloadBytes = (
   htmlContent: string,
   attachments?: Array<Partial<EmailAttachment> | null | undefined>
 ): number => {
-  const baseBytes = Buffer.byteLength(to, 'utf8')
-    + Buffer.byteLength(subject, 'utf8')
-    + Buffer.byteLength(htmlContent, 'utf8')
+  const baseBytes = Buffer.byteLength(String(to || ''), 'utf8')
+    + Buffer.byteLength(String(subject || ''), 'utf8')
+    + Buffer.byteLength(String(htmlContent || ''), 'utf8')
     + 1024;
 
   const attachmentBytes = (attachments || []).reduce((sum, attachment) => {

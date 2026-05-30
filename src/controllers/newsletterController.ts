@@ -463,6 +463,10 @@ const getEmailDomain = (email: string): string => {
   return email.slice(atIndex + 1).toLowerCase();
 };
 
+const normalizeEmailAddress = (value: unknown): string => {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+};
+
 const parseRetryAfterSeconds = (message: string): number | null => {
   const match = message.match(/after\s+(\d+)\s+seconds?/i);
   if (!match) {
@@ -953,7 +957,14 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       }
     });
 
-    if (subscribers.length === 0) {
+    const subscribersWithEmail = subscribers.filter((subscriber) => normalizeEmailAddress(subscriber.email).length > 0);
+    const invalidSubscriberCount = subscribers.length - subscribersWithEmail.length;
+
+    if (invalidSubscriberCount > 0) {
+      console.warn(`Skipping ${invalidSubscriberCount} subscriber(s) with missing/invalid email for ${frequency} scheduled send`);
+    }
+
+    if (subscribersWithEmail.length === 0) {
       console.log('No subscribers to send newsletters to');
       res.status(200).json({ sent: 0, failed: 0 });
       return;
@@ -961,7 +972,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
 
     if (dryRun) {
       const recipientPreviewLimit = Number(process.env.MANUAL_SEND_DRYRUN_PREVIEW_LIMIT || 50);
-      const recipients = subscribers.map((subscriber) => subscriber.email);
+      const recipients = subscribersWithEmail.map((subscriber) => normalizeEmailAddress(subscriber.email));
       const domains = recipients.reduce<Record<string, number>>((acc, email) => {
         const domain = getEmailDomain(email) || 'unknown';
         acc[domain] = (acc[domain] || 0) + 1;
@@ -975,6 +986,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       res.status(200).json({
         dryRun: true,
         frequency,
+        invalidSubscriberCount,
         totalRecipients: recipients.length,
         recipientsPreview: recipients.slice(0, Math.max(recipientPreviewLimit, 0)),
         domainBreakdown
@@ -982,7 +994,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       return;
     }
 
-    console.log(`Sending newsletters to ${subscribers.length} subscribers...`);
+    console.log(`Sending newsletters to ${subscribersWithEmail.length} subscribers...`);
 
     let sent = 0;
     let failed = 0;
@@ -995,14 +1007,15 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     const allSentArticleIds = new Set<number>();
 
     // Send newsletter to each subscriber with deterministic session allocation.
-    for (const subscriber of subscribers) {
+    for (const subscriber of subscribersWithEmail) {
       try {
-        const domain = getEmailDomain(subscriber.email);
+        const recipientEmail = normalizeEmailAddress(subscriber.email);
+        const domain = getEmailDomain(recipientEmail);
         const now = Date.now();
         const cooldownUntil = domain ? domainCooldownUntil.get(domain) || 0 : 0;
         if (cooldownUntil > now) {
           const waitMs = cooldownUntil - now;
-          console.warn(`Domain cooldown active for ${domain}; delaying ${subscriber.email} by ${waitMs}ms`);
+          console.warn(`Domain cooldown active for ${domain}; delaying ${recipientEmail} by ${waitMs}ms`);
           await pause(waitMs);
         }
 
@@ -1041,7 +1054,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
 
         const preferencesToken = await ensurePreferencesToken(subscriber);
         const emailSent = await sendNewsletterEmail(
-          subscriber.email,
+          recipientEmail,
           articles,
           subscriber.unsubscribeToken,
           preferencesToken,
@@ -1051,7 +1064,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           sent++;
           articles.forEach((a) => allSentArticleIds.add(a.id));
           await recordDeliveryAttempt({
-            email: subscriber.email,
+            email: recipientEmail,
             triggerType: 'scheduled',
             frequency: effectiveFrequency,
             success: true,
@@ -1059,8 +1072,8 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           });
         } else {
           failed++;
-          const sendError = consumeLastEmailSendError(subscriber.email) || 'Email service returned unsuccessful status';
-          console.error(`Failed to send newsletter to ${subscriber.email}`);
+          const sendError = consumeLastEmailSendError(recipientEmail) || 'Email service returned unsuccessful status';
+          console.error(`Failed to send newsletter to ${recipientEmail}`);
 
           const retryAfterSeconds = parseRetryAfterSeconds(sendError);
           if (domain && sendError.toLowerCase().includes('toomanyrequests')) {
@@ -1072,7 +1085,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           }
 
           await recordDeliveryAttempt({
-            email: subscriber.email,
+            email: recipientEmail,
             triggerType: 'scheduled',
             frequency: effectiveFrequency,
             success: false,
@@ -1080,15 +1093,16 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
             articleCount: articles.length
           });
           failedRecipients.push({
-            email: subscriber.email,
+            email: recipientEmail,
             reason: sendError
           });
         }
       } catch (error) {
         failed++;
         console.error(`Error sending newsletter to subscriber:`, error);
+        const recipientEmail = normalizeEmailAddress(subscriber.email) || 'unknown-email';
         await recordDeliveryAttempt({
-          email: subscriber.email,
+          email: recipientEmail,
           triggerType: 'scheduled',
           frequency: normalizeNewsletterFrequency(subscriber.frequency),
           success: false,
@@ -1096,7 +1110,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           articleCount: 0
         });
         failedRecipients.push({
-          email: subscriber.email,
+          email: recipientEmail,
           reason: error instanceof Error ? error.message : 'Unknown error'
         });
       }

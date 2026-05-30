@@ -481,6 +481,23 @@ const normalizeEmailAddress = (value: unknown): string => {
   return String(value ?? '').trim().toLowerCase();
 };
 
+const resolveSubscriberEmail = (subscriber: Subscriber): string => {
+  const modelLike = subscriber as unknown as {
+    email?: unknown;
+    dataValues?: { email?: unknown };
+    get?: (key: string) => unknown;
+    toJSON?: () => { email?: unknown };
+  };
+
+  return normalizeEmailAddress(
+    modelLike.email
+      ?? modelLike.dataValues?.email
+      ?? modelLike.get?.('email')
+      ?? modelLike.toJSON?.().email
+      ?? null
+  );
+};
+
 const parseRetryAfterSeconds = (message: string): number | null => {
   const match = message.match(/after\s+(\d+)\s+seconds?/i);
   if (!match) {
@@ -971,7 +988,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       }
     });
 
-    const subscribersWithEmail = subscribers.filter((subscriber) => normalizeEmailAddress(subscriber.email).length > 0);
+    const subscribersWithEmail = subscribers.filter((subscriber) => resolveSubscriberEmail(subscriber).length > 0);
     const invalidSubscriberCount = subscribers.length - subscribersWithEmail.length;
 
     if (invalidSubscriberCount > 0) {
@@ -1003,7 +1020,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
 
     if (dryRun) {
       const recipientPreviewLimit = Number(process.env.MANUAL_SEND_DRYRUN_PREVIEW_LIMIT || 50);
-      const recipients = subscribersWithEmail.map((subscriber) => normalizeEmailAddress(subscriber.email));
+      const recipients = subscribersWithEmail.map((subscriber) => resolveSubscriberEmail(subscriber));
       const domains = recipients.reduce<Record<string, number>>((acc, email) => {
         const domain = getEmailDomain(email) || 'unknown';
         acc[domain] = (acc[domain] || 0) + 1;
@@ -1040,7 +1057,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     // Send newsletter to each subscriber with deterministic session allocation.
     for (const subscriber of subscribersWithEmail) {
       try {
-        const recipientEmail = normalizeEmailAddress(subscriber.email);
+        const recipientEmail = resolveSubscriberEmail(subscriber);
         const domain = getEmailDomain(recipientEmail);
         const now = Date.now();
         const cooldownUntil = domain ? domainCooldownUntil.get(domain) || 0 : 0;
@@ -1131,7 +1148,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
       } catch (error) {
         failed++;
         console.error(`Error sending newsletter to subscriber:`, error);
-        const recipientEmail = normalizeEmailAddress(subscriber.email) || 'unknown-email';
+        const recipientEmail = resolveSubscriberEmail(subscriber) || 'unknown-email';
         await recordDeliveryAttempt({
           email: recipientEmail,
           triggerType: 'scheduled',

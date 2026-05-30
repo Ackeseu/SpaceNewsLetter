@@ -464,7 +464,7 @@ const getEmailDomain = (email: string): string => {
 };
 
 const normalizeEmailAddress = (value: unknown): string => {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return String(value ?? '').trim().toLowerCase();
 };
 
 const parseRetryAfterSeconds = (message: string): number | null => {

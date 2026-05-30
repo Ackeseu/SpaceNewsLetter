@@ -21,20 +21,20 @@ interface SubscriberAttributes {
 interface SubscriberCreationAttributes extends Optional<SubscriberAttributes, 'id' | 'isActive' | 'isVerified' | 'topics' | 'frequency' | 'regions' | 'preferencesToken'> {}
 
 class Subscriber extends Model<SubscriberAttributes, SubscriberCreationAttributes> implements SubscriberAttributes {
-  public id!: number;
-  public email!: string;
-  public firstName?: string;
-  public lastName?: string;
-  public isActive!: boolean;
-  public frequency!: 'daily' | 'weekly' | 'monthly';
-  public topics!: string[];
-  public regions!: string[];
-  public verificationToken?: string;
-  public isVerified!: boolean;
-  public unsubscribeToken!: string;
-  public preferencesToken?: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare public id: number;
+  declare public email: string;
+  declare public firstName?: string;
+  declare public lastName?: string;
+  declare public isActive: boolean;
+  declare public frequency: 'daily' | 'weekly' | 'monthly';
+  declare public topics: string[];
+  declare public regions: string[];
+  declare public verificationToken?: string;
+  declare public isVerified: boolean;
+  declare public unsubscribeToken: string;
+  declare public preferencesToken?: string;
+  declare public readonly createdAt: Date;
+  declare public readonly updatedAt: Date;
 }
 
 Subscriber.init(

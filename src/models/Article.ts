@@ -22,21 +22,21 @@ interface ArticleAttributes {
 interface ArticleCreationAttributes extends Optional<ArticleAttributes, 'id' | 'isFeatured'> {}
 
 class Article extends Model<ArticleAttributes, ArticleCreationAttributes> implements ArticleAttributes {
-  public id!: number;
-  public title!: string;
-  public description!: string;
-  public link!: string;
-  public pubDate!: Date;
-  public source!: string;
-  public category!: string[];
-  public imageUrl?: string;
-  public isFeatured!: boolean;
-  public priority?: number;
-  public region?: string;
-  public titleHash?: string;
-  public lastSentAt?: Date;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare public id: number;
+  declare public title: string;
+  declare public description: string;
+  declare public link: string;
+  declare public pubDate: Date;
+  declare public source: string;
+  declare public category: string[];
+  declare public imageUrl?: string;
+  declare public isFeatured: boolean;
+  declare public priority?: number;
+  declare public region?: string;
+  declare public titleHash?: string;
+  declare public lastSentAt?: Date;
+  declare public readonly createdAt: Date;
+  declare public readonly updatedAt: Date;
 }
 
 Article.init(

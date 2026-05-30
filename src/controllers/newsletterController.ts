@@ -1103,10 +1103,11 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         );
 
         const preferencesToken = await ensurePreferencesToken(subscriber);
+        const unsubscribeToken = await ensureUnsubscribeToken(subscriber);
         const emailSent = await sendNewsletterEmail(
           recipientEmail,
           articles,
-          subscriber.unsubscribeToken,
+          unsubscribeToken,
           preferencesToken,
           effectiveFrequency
         );

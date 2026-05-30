@@ -1102,7 +1102,11 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     res.status(200).json({ sent, failed, failedRecipients });
   } catch (error) {
     console.error('Send scheduled newsletters error:', error);
-    res.status(500).json({ error: 'Failed to send newsletters' });
+    const errorDetail = error instanceof Error ? error.message : String(error);
+    res.status(500).json({
+      error: 'Failed to send newsletters',
+      detail: errorDetail
+    });
   }
 };
 

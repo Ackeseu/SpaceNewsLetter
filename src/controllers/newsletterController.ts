@@ -965,8 +965,25 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     }
 
     if (subscribersWithEmail.length === 0) {
-      console.log('No subscribers to send newsletters to');
-      res.status(200).json({ sent: 0, failed: 0 });
+      console.log(`No subscribers to send newsletters to for frequency=${frequency}`);
+
+      const [verifiedActiveTotal, verifiedActiveDaily, verifiedActiveWeekly] = await Promise.all([
+        Subscriber.count({ where: { isVerified: true, isActive: true } }),
+        Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'daily' } }),
+        Subscriber.count({ where: { isVerified: true, isActive: true, frequency: 'weekly' } })
+      ]);
+
+      res.status(200).json({
+        sent: 0,
+        failed: 0,
+        frequency,
+        invalidSubscriberCount,
+        debug: {
+          verifiedActiveTotal,
+          verifiedActiveDaily,
+          verifiedActiveWeekly
+        }
+      });
       return;
     }
 

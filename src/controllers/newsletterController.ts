@@ -1067,7 +1067,9 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
           await pause(waitMs);
         }
 
-        const effectiveFrequency = normalizeNewsletterFrequency(subscriber.frequency);
+        // Scheduled send is explicitly invoked for one frequency, so keep it consistent
+        // even if subscriber model field shape is unexpected at runtime.
+        const effectiveFrequency = frequency;
         const preferenceWhere = buildPreferenceWhere(subscriber);
         const freshnessThreshold = new Date();
         freshnessThreshold.setDate(freshnessThreshold.getDate() - 7);
@@ -1152,7 +1154,7 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
         await recordDeliveryAttempt({
           email: recipientEmail,
           triggerType: 'scheduled',
-          frequency: normalizeNewsletterFrequency(subscriber.frequency),
+          frequency,
           success: false,
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
           articleCount: 0

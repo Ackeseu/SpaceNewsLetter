@@ -912,9 +912,19 @@ export const sendScheduledNewsletters = async (req: Request, res: Response) => {
     }
 
     if (shouldRefreshBeforeScheduledSend(frequency)) {
-      console.log(`Refreshing content before ${frequency} scheduled send...`);
-      const articlesAdded = await aggregateNews();
-      console.log(`✓ Pre-send refresh completed. Added ${articlesAdded} article(s)`);
+      const failOnRefreshError = (process.env.SCHEDULED_SEND_FAIL_ON_REFRESH_ERROR || 'false').toLowerCase() === 'true';
+      try {
+        console.log(`Refreshing content before ${frequency} scheduled send...`);
+        const articlesAdded = await aggregateNews();
+        console.log(`✓ Pre-send refresh completed. Added ${articlesAdded} article(s)`);
+      } catch (refreshError) {
+        const refreshMessage = refreshError instanceof Error ? refreshError.message : String(refreshError);
+        console.error(`Pre-send refresh failed before ${frequency} send: ${refreshMessage}`);
+        if (failOnRefreshError) {
+          throw refreshError;
+        }
+        console.warn('Proceeding with scheduled send using existing articles because SCHEDULED_SEND_FAIL_ON_REFRESH_ERROR is disabled.');
+      }
     }
 
     // Check content availability before sending

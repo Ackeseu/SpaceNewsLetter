@@ -456,6 +456,9 @@ const pause = async (ms: number): Promise<void> => {
 };
 
 const getEmailDomain = (email: string): string => {
+  if (!email) {
+    return '';
+  }
   const atIndex = email.lastIndexOf('@');
   if (atIndex === -1) {
     return '';
@@ -464,6 +467,17 @@ const getEmailDomain = (email: string): string => {
 };
 
 const normalizeEmailAddress = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase();
+  }
+
+  if (value && typeof value === 'object') {
+    const maybeEmail = (value as { email?: unknown }).email;
+    if (typeof maybeEmail === 'string') {
+      return maybeEmail.trim().toLowerCase();
+    }
+  }
+
   return String(value ?? '').trim().toLowerCase();
 };
 

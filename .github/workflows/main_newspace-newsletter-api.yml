@@ -43,11 +43,41 @@ jobs:
           cd release
           zip -r ../release.zip .
 
+      - name: Install Azure Functions dependencies
+        working-directory: azure-functions
+        run: npm ci
+
+      - name: Build Azure Functions TypeScript
+        working-directory: azure-functions
+        run: npm run build
+
+      - name: Keep Azure Functions production dependencies only
+        working-directory: azure-functions
+        run: npm prune --omit=dev
+
+      - name: Create Azure Functions deployment package
+        run: |
+          mkdir -p functions-release
+          cp -R azure-functions/dist functions-release/dist
+          cp -R azure-functions/NewsAggregator functions-release/NewsAggregator
+          cp -R azure-functions/PipelineMonitor functions-release/PipelineMonitor
+          cp -R azure-functions/SendNewsletter functions-release/SendNewsletter
+          cp -R azure-functions/node_modules functions-release/node_modules
+          cp azure-functions/package.json azure-functions/package-lock.json azure-functions/host.json functions-release/
+          cd functions-release
+          zip -r ../functions-release.zip .
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
           path: release.zip
+
+      - name: Upload Azure Functions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-app
+          path: functions-release.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -62,6 +92,12 @@ jobs:
         with:
           name: node-app
           path: artifacts
+
+      - name: Download Azure Functions artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: functions-app
+          path: functions-artifacts
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -91,4 +127,17 @@ jobs:
               --resource-group newspace-newsletter-rg \
               --name newspace-newsletter-api \
               --src "$ZIP_PATH"
+
+            FUNCTIONS_ZIP_PATH=$(find functions-artifacts -type f -name 'functions-release.zip' | head -n 1)
+            if [ -z "$FUNCTIONS_ZIP_PATH" ]; then
+              echo "functions-release.zip not found under functions-artifacts"
+              find functions-artifacts -maxdepth 4 -type f
+              exit 1
+            fi
+
+            echo "Deploying Azure Functions package: $FUNCTIONS_ZIP_PATH"
+            az functionapp deployment source config-zip \
+              --resource-group newspace-newsletter-rg \
+              --name newspacenewsletter-func \
+              --src "$FUNCTIONS_ZIP_PATH"
           

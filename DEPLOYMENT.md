@@ -14,9 +14,10 @@ Workflow file: `.github/workflows/main_newspace-newsletter-api.yml`
 Current behavior:
 1. Install deps with `npm ci`
 2. Build TypeScript with `npm run build`
-3. Prune dev dependencies
-4. Package `dist`, `public`, `node_modules`, and package manifests
-5. Deploy ZIP via Azure CLI (`az webapp deployment source config-zip`)
+3. Package and upload the API App Service ZIP (`dist`, `public`, `node_modules`, and package manifests)
+4. Install and build `azure-functions/`, then package the Function App ZIP (`dist`, function folders, `host.json`, `node_modules`, and package manifests)
+5. Deploy the API ZIP via Azure CLI (`az webapp deployment source config-zip`)
+6. Deploy the Functions ZIP via Azure CLI (`az functionapp deployment source config-zip`)
 
 ## Required App Service Settings
 

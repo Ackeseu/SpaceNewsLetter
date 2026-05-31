@@ -57,9 +57,17 @@ const GOOGLE_NEWS_QUERY_NEWSPACE_TERMS = [
   'launch'
 ];
 
+const normalizeFeedIdentity = (feed: Partial<Pick<RSSFeed, 'url' | 'source'>>): { source: string; url: string } => ({
+  source: typeof feed.source === 'string' ? feed.source.trim().toLowerCase() : '',
+  url: typeof feed.url === 'string' ? feed.url.trim().toLowerCase() : ''
+});
+
 const isGoogleNewsAggregatorFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): boolean => {
-  const source = feed.source.toLowerCase();
-  const url = feed.url.toLowerCase();
+  const { source, url } = normalizeFeedIdentity(feed);
+
+  if (!source && !url) {
+    return false;
+  }
 
   return source.includes('google news') || url.includes('news.google.com/rss/search');
 };
@@ -87,7 +95,12 @@ const isCuratedGooglePublisherFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): bo
   }
 
   try {
-    const parsed = new URL(feed.url);
+    const { url } = normalizeFeedIdentity(feed);
+    if (!url) {
+      return false;
+    }
+
+    const parsed = new URL(url);
     const query = decodeURIComponent((parsed.searchParams.get('q') || '').toLowerCase());
     const hasSiteFilter = query.includes('site:');
     const hasNewSpaceTerm = GOOGLE_NEWS_QUERY_NEWSPACE_TERMS.some((term) => query.includes(term));
@@ -240,16 +253,27 @@ const getConfiguredFeeds = async (): Promise<RSSFeed[]> => {
   });
 
   if (configuredFeeds.length > 0) {
-    const mappedFeeds = configuredFeeds.map((feed) => ({
-      url: feed.url,
-      source: feed.source,
-      category: feed.category,
-      region: feed.region || undefined,
-      requiredKeywords: getDefaultRequiredKeywordsForFeed({
-        url: feed.url,
-        source: feed.source
+    const mappedFeeds = configuredFeeds
+      .map((feed) => ({
+        url: typeof feed.url === 'string' ? feed.url.trim() : '',
+        source: typeof feed.source === 'string' ? feed.source.trim() : '',
+        category: Array.isArray(feed.category) && feed.category.length > 0 ? feed.category : ['general'],
+        region: feed.region || undefined
+      }))
+      .filter((feed) => {
+        const valid = Boolean(feed.url) && Boolean(feed.source);
+        if (!valid) {
+          console.warn('Skipping malformed active feed with missing url/source');
+        }
+        return valid;
       })
-    }));
+      .map((feed) => ({
+        ...feed,
+        requiredKeywords: getDefaultRequiredKeywordsForFeed({
+          url: feed.url,
+          source: feed.source
+        })
+      }));
 
     if (!STRICT_SOURCE_MODE) {
       return mappedFeeds;

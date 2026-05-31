@@ -135,6 +135,14 @@ jobs:
               exit 1
             fi
 
+            if ! az functionapp show \
+              --resource-group newspace-newsletter-rg \
+              --name newspacenewsletter-func \
+              --query name -o tsv >/dev/null 2>&1; then
+              echo "::warning::Skipping Function App deploy: current GitHub OIDC identity is not authorized for newspacenewsletter-func. Grant at least Website Contributor on this Function App (or RG) to enable CI deployment."
+              exit 0
+            fi
+
             echo "Deploying Azure Functions package: $FUNCTIONS_ZIP_PATH"
             az functionapp deployment source config-zip \
               --resource-group newspace-newsletter-rg \

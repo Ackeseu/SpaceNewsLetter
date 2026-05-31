@@ -19,6 +19,12 @@ Current behavior:
 5. Deploy the API ZIP via Azure CLI (`az webapp deployment source config-zip`)
 6. Deploy the Functions ZIP via Azure CLI (`az functionapp deployment source config-zip`)
 
+Note: The GitHub OIDC identity used by this workflow must have RBAC access to both apps.
+- API app deployment requires access to `newspace-newsletter-api`
+- Functions deployment requires access to `newspacenewsletter-func`
+
+If Function App RBAC is missing, the workflow will deploy API and emit a warning that Function deployment was skipped.
+
 ## Required App Service Settings
 
 Set in Azure App Service (`newspace-newsletter-api`):

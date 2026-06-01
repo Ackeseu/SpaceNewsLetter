@@ -15,14 +15,14 @@ interface NewsSourceAttributes {
 interface NewsSourceCreationAttributes extends Optional<NewsSourceAttributes, 'id' | 'isActive'> {}
 
 class NewsSource extends Model<NewsSourceAttributes, NewsSourceCreationAttributes> implements NewsSourceAttributes {
-  public id!: number;
-  public url!: string;
-  public source!: string;
-  public category!: string[];
-  public region?: string;
-  public isActive!: boolean;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare public id: number;
+  declare public url: string;
+  declare public source: string;
+  declare public category: string[];
+  declare public region?: string;
+  declare public isActive: boolean;
+  declare public readonly createdAt: Date;
+  declare public readonly updatedAt: Date;
 }
 
 NewsSource.init(

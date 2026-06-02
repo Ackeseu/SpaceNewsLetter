@@ -57,6 +57,19 @@ const GOOGLE_NEWS_QUERY_NEWSPACE_TERMS = [
   'launch'
 ];
 
+const CURATED_PUBLISHER_HARD_SPACE_KEYWORDS = [
+  'satellite', 'orbit', 'orbital', 'rocket', 'launch', 'aerospace',
+  'payload', 'constellation', 'earth observation', 'remote sensing',
+  'spacecraft', 'propulsion', 'avionics', 'space station'
+];
+
+const CURATED_PUBLISHER_OFF_TOPIC_KEYWORDS = [
+  'backchat',
+  'radio 3',
+  'board of peace',
+  'gaza board of peace'
+];
+
 const normalizeFeedIdentity = (feed: Partial<Pick<RSSFeed, 'url' | 'source'>>): { source: string; url: string } => ({
   source: typeof feed.source === 'string' ? feed.source.trim().toLowerCase() : '',
   url: typeof feed.url === 'string' ? feed.url.trim().toLowerCase() : ''
@@ -70,6 +83,12 @@ const isGoogleNewsAggregatorFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): bool
   }
 
   return source.includes('google news') || url.includes('news.google.com/rss/search');
+};
+
+const isExcludedFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): boolean => {
+  const { source, url } = normalizeFeedIdentity(feed);
+
+  return source.includes('rthk hk newspace') || url.includes('site%3arthk.hk');
 };
 
 const isCurrentYearGoogleNewsItem = (feed: Pick<RSSFeed, 'url' | 'source'>, pubDate?: string): boolean => {
@@ -112,6 +131,10 @@ const isCuratedGooglePublisherFeed = (feed: Pick<RSSFeed, 'url' | 'source'>): bo
 };
 
 const isStrictAllowedSource = (feed: Pick<RSSFeed, 'url' | 'source'>): boolean => {
+  if (isExcludedFeed(feed)) {
+    return false;
+  }
+
   if (isGoogleNewsAggregatorFeed(feed)) {
     return isCuratedGooglePublisherFeed(feed);
   }
@@ -273,7 +296,8 @@ const getConfiguredFeeds = async (): Promise<RSSFeed[]> => {
           url: feed.url,
           source: feed.source
         })
-      }));
+      }))
+      .filter((feed) => !isExcludedFeed(feed));
 
     if (!STRICT_SOURCE_MODE) {
       return mappedFeeds;
@@ -687,8 +711,10 @@ const passesFeedKeywordGate = (
 
   const hasNewSpaceIntent = hasAnyKeyword(text, NEWSPACE_KEYWORDS);
   const hasSpaceCoreSignal = hasAnyKeyword(text, SPACE_CORE_KEYWORDS);
+  const hasHardSpaceSignal = hasAnyKeyword(text, CURATED_PUBLISHER_HARD_SPACE_KEYWORDS);
+  const hasOffTopicProgramSignal = hasAnyKeyword(text, CURATED_PUBLISHER_OFF_TOPIC_KEYWORDS);
 
-  return hasNewSpaceIntent && hasSpaceCoreSignal;
+  return hasNewSpaceIntent && hasSpaceCoreSignal && hasHardSpaceSignal && !hasOffTopicProgramSignal;
 };
 
 const isHongKongFocusedNewSpaceArticle = (

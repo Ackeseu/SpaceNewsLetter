@@ -247,6 +247,15 @@ const NEWSLETTER_TARGET_ARTICLE_COUNT = NEWSLETTER_SESSION_PLAN.reduce((sum, ste
 
 const normalizeArticleText = (value: unknown): string => String(value || '').toLowerCase();
 
+const NEWSLETTER_EXCLUDED_SOURCE_PATTERNS = [
+  'google news - rthk hk newspace'
+];
+
+const isExcludedNewsletterSource = (article: Article): boolean => {
+  const source = normalizeArticleText(article.source);
+  return NEWSLETTER_EXCLUDED_SOURCE_PATTERNS.some((pattern) => source.includes(pattern));
+};
+
 const ARTICLE_HK_KEYWORDS = [
   'hong kong', 'hongkong', 'hksar', 'cyberport', 'hong kong science park', 'hkust', 'hku', '.hk/'
 ];
@@ -318,6 +327,10 @@ const getSessionBucket = (article: Article): SessionBucket => {
 };
 
 const isEligibleNewsletterArticle = (article: Article): boolean => {
+  if (isExcludedNewsletterSource(article)) {
+    return false;
+  }
+
   if (!isOasaArticle(article)) {
     return passesNewsletterContentFilter(
       String(article.title || ''),

@@ -977,9 +977,9 @@ export const sendNewsletterEmail = async (
     </head>
     <body>
       <div class="container">
-        <div class="front-disclaimer">This AI service is provided exclusively to members of SEA only and strictly not for redistribution</div>
         <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
           <img src="{{LOGO_SRC}}" alt="OASA NewSpace Newsletter" class="header-logo">
+          <div class="front-disclaimer">This AI summary service has been provided exclusively to members of SEA, strictly for educational purposes, and not for redistribution, reference, or referral.</div>
           <h1>OASA NewSpace Newsletter</h1>
           <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Curated NewSpace summaries from around the world, for our members only</p>
         </div>

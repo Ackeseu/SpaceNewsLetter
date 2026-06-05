@@ -952,6 +952,7 @@ export const sendNewsletterEmail = async (
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1f2937; background-color: #f3f4f6; }
         .container { max-width: 700px; margin: 0 auto; background-color: white; padding: 20px; }
+        .front-disclaimer { margin: 0 0 14px; padding: 14px 16px; border: 2px solid #d97706; border-left: 8px solid #b45309; border-radius: 6px; background: #fff7ed; color: #7c2d12; font-size: 15px; font-weight: 800; line-height: 1.45; text-align: center; }
         .header { background-color: #ffffff; color: #111827; padding: 24px 20px; text-align: center; border-bottom: 1px solid #e5e7eb; }
         .header h1 { margin: 8px 0 10px; font-size: 30px; font-weight: 700; letter-spacing: -0.3px; }
         .header p { margin: 0; font-size: 14px; color: #6b7280; }
@@ -976,6 +977,7 @@ export const sendNewsletterEmail = async (
     </head>
     <body>
       <div class="container">
+        <div class="front-disclaimer">This AI service is provided exclusively to members of SEA only and strictly not for redistribution</div>
         <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
           <img src="{{LOGO_SRC}}" alt="OASA NewSpace Newsletter" class="header-logo">
           <h1>OASA NewSpace Newsletter</h1>

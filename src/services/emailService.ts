@@ -943,6 +943,29 @@ export const sendNewsletterEmail = async (
           <h2>Updates from OASA</h2>
           ${oasaMarkup || '<p>No OASA event updates available for this issue.</p>'}
         </div>
+        <div class="section">
+          <h2>OASA Programmes</h2>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#f0f7ff;">
+              <img src="https://static.wixstatic.com/media/4abc53_e960c74bea904e96bff44b0a28e19877~mv2.png/v1/fill/w_785,h_366,fp_0.61_0.48,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/4abc53_e960c74bea904e96bff44b0a28e19877~mv2.png" alt="Young Mission Specialist Boot Camp Summer 2026" style="width:100%;height:auto;display:block;">
+              <div style="padding:16px 18px 18px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.8px;color:#2563eb;text-transform:uppercase;margin-bottom:6px;">Summer 2026 · Limited Places</div>
+                <h3 style="margin:0 0 8px;font-size:18px;color:#111827;">Young Mission Specialist One-Week Boot Camp</h3>
+                <p style="margin:0 0 10px;font-size:13px;color:#4b5563;line-height:1.55;">3 – 7 August 2026 &nbsp;|&nbsp; Ages 14–19 &nbsp;|&nbsp; English &amp; Putonghua<br>Build a CubeSat, analyse satellite data, tackle alien-contact scenarios, and present your Moon habitat plan to real space experts. Registration opens 12 June — early-bird 5% off before 30 June.</p>
+                <a href="https://www.oasahk.org" style="display:inline-block;padding:9px 18px;background:#2563eb;color:#ffffff;border-radius:6px;font-size:13px;font-weight:700;text-decoration:none;">Register Now →</a>
+              </div>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#f0fff4;">
+              <img src="https://static.wixstatic.com/media/4abc53_27c6217b262c46298d70a80f586f2842~mv2.png/v1/fill/w_785,h_334,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/4abc53_27c6217b262c46298d70a80f586f2842~mv2.png" alt="OASA Internship" style="width:100%;height:auto;display:block;">
+              <div style="padding:16px 18px 18px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.8px;color:#059669;text-transform:uppercase;margin-bottom:6px;">Rolling Intake · 2–8 Weeks</div>
+                <h3 style="margin:0 0 8px;font-size:18px;color:#111827;">OASA Internship — Shaping Future Astropreneurs</h3>
+                <p style="margin:0 0 10px;font-size:13px;color:#4b5563;line-height:1.55;">Work alongside OASA professionals and researchers at HKU's Lab for Space Research. Develop astropreneurship skills, build CubeSats, and contribute to real NewSpace projects. Mentored by Dr. Cecilia Leung. Fees from HK$1,200/week; scholarships available.</p>
+                <a href="https://www.oasahk.org/oasa-internship" style="display:inline-block;padding:9px 18px;background:#059669;color:#ffffff;border-radius:6px;font-size:13px;font-weight:700;text-decoration:none;">Learn More →</a>
+              </div>
+            </div>
+          </div>
+        </div>
       `;
 
   const renderNewsletterHtml = (sectionMarkup: string): string => `
@@ -981,7 +1004,6 @@ export const sendNewsletterEmail = async (
           <img src="{{LOGO_SRC}}" alt="OASA NewSpace Newsletter" class="header-logo">
           <div class="front-disclaimer">This AI summary service has been provided exclusively to members of SEA, strictly for educational purposes, and not for redistribution, reference, or referral.</div>
           <h1>OASA NewSpace Newsletter</h1>
-          <p>${editionLabel ? `<strong>${editionLabel}</strong> · ` : ''}Curated NewSpace summaries from around the world, for our members only</p>
         </div>
         
         ${sectionMarkup}

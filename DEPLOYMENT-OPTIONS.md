@@ -6,15 +6,20 @@ Use the existing workflow:
 
 - `.github/workflows/main_newspace-newsletter-api.yml`
 - Trigger: push to `main`
-- Deploy target: `newspace-newsletter-api`
+- Deploy targets: `newspace-newsletter-api` and `newspacenewsletter-func`
 
 Pros:
 - Reproducible and versioned
 - Build/package validation in CI
 - Uses OIDC (`azure/login`) with no local deploy dependency
+- Handles both API and Azure Functions packaging/deploy in one run
 
 When to use:
 - Normal production deployments
+
+RBAC note:
+- The GitHub OIDC identity must have access to both apps.
+- If Function App access is missing, API deploy still succeeds and Function deploy is skipped with a warning.
 
 ---
 

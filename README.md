@@ -313,16 +313,18 @@ npm install -g azure-functions-core-tools@4
 
 # Create Function App
 az functionapp create \
-  --name newspace-newsletter-functions \
+  --name newspacenewsletter-func \
   --resource-group newspace-newsletter-rg \
   --consumption-plan-location eastus \
   --runtime node \
-  --runtime-version 20 \
+  --runtime-version 22 \
   --functions-version 4
 
 # Deploy functions
-func azure functionapp publish newspace-newsletter-functions
+func azure functionapp publish newspacenewsletter-func
 ```
+
+For production, prefer GitHub Actions on `main`, which deploys both the API and Function App using Azure OIDC. See `.github/DEPLOYMENT.md` and `.github/workflows/main_newspace-newsletter-api.yml`.
 
 ## Testing Aggregation/Sending
 

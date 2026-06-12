@@ -1,79 +1,71 @@
 # GitHub Actions Deployment Setup
 
-This project uses GitHub Actions to automatically deploy to Azure App Service.
+This repository deploys through GitHub Actions using Azure OIDC login (not publish profile authentication).
 
-## Setup Instructions
+## Current Workflow
 
-### 1. Get Azure Publish Profile
+- Workflow file: `.github/workflows/main_newspace-newsletter-api.yml`
+- Triggers:
+  - Push to `main`
+  - Manual run via `workflow_dispatch`
+- Deploy targets:
+  - API App Service: `newspace-newsletter-api`
+  - Function App: `newspacenewsletter-func`
 
-Run this command to download your publish profile:
+## Required GitHub Secrets
 
-```bash
-az webapp deployment list-publishing-profiles \
-  --name newspace-newsletter-api \
-  --resource-group newspace-newsletter-rg \
-  --xml > publish-profile.xml
-```
+Add these repository secrets under GitHub Settings -> Secrets and variables -> Actions:
 
-### 2. Add GitHub Secret
+- `AZUREAPPSERVICE_CLIENTID_9B4A83214E3141E9A6F1FE30DF899A3B`
+- `AZUREAPPSERVICE_TENANTID_DE46BC94503E44DC883D8334622D1D4B`
+- `AZUREAPPSERVICE_SUBSCRIPTIONID_5C957B894AEA465D89A2E62B7DAD9C9D`
 
-1. Go to your GitHub repository: https://github.com/Ackeseu/SpaceNewsLetter
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Name: `AZURE_WEBAPP_PUBLISH_PROFILE`
-5. Value: Paste the entire content of `publish-profile.xml`
-6. Click **Add secret**
+These are consumed by `azure/login@v2` in the workflow.
 
-### 3. Trigger Deployment
+## Azure RBAC Requirements for OIDC Identity
 
-The workflow will automatically run when you:
-- Push to the `main` branch
-- Manually trigger it from the Actions tab
+The federated identity used by the workflow must have deployment permissions on:
 
-To trigger manually:
-1. Go to **Actions** tab in GitHub
-2. Select **Deploy to Azure App Service**
-3. Click **Run workflow** → **Run workflow**
+- `newspace-newsletter-api`
+- `newspacenewsletter-func`
 
-### 4. Monitor Deployment
+If Function App access is missing, API deployment still succeeds and the workflow logs a warning that Function deployment was skipped.
 
-- Check the **Actions** tab to see deployment progress
-- Build takes ~3-5 minutes
-- Once complete, your app will be live at: https://newspace-newsletter-api.azurewebsites.net
+## What the Workflow Deploys
 
-## What Gets Deployed
+Build job:
+1. Runs `npm ci` and `npm run build` for API
+2. Prunes API devDependencies
+3. Packages API release ZIP with `dist`, `public`, `node_modules`, `package.json`, `package-lock.json`, and optional `web.config`
+4. Runs `npm ci` and `npm run build` in `azure-functions/`
+5. Prunes Function devDependencies
+6. Packages Function ZIP with `dist`, function folders, `host.json`, `node_modules`, `package.json`, and `package-lock.json`
 
-The workflow:
-- ✅ Installs dependencies on Linux (Ubuntu)
-- ✅ Compiles TypeScript to JavaScript
-- ✅ Packages everything (dist/, node_modules/, config files)
-- ✅ Deploys to Azure App Service
-- ✅ Automatically restarts the app
+Deploy job:
+1. Downloads both artifacts
+2. Logs into Azure via OIDC
+3. Forces App Service zip-deploy mode (`SCM_DO_BUILD_DURING_DEPLOYMENT=false`, `ENABLE_ORYX_BUILD=false`)
+4. Deploys API ZIP via `az webapp deployment source config-zip`
+5. Deploys Function ZIP via `az functionapp deployment source config-zip` (when RBAC permits)
 
-## Features Included
+## Triggering and Monitoring
 
-Your deployed app includes:
-- 🇨🇳 **China newspace sources** (Global Times, Xinhua, etc.)
-- 🇭🇰 **Hong Kong priority system** (+100 points for HK articles)
-- 💼 **Business-focused filtering** (keyword-based scoring)
-- 📧 **Azure Communication Services** email integration
-- ⏰ **Automated news aggregation** (every 6 hours via Azure Functions)
-- 📨 **Daily and weekly newsletters**
+- Automatic deploy: push commits to `main`
+- Manual deploy: GitHub Actions -> Build and deploy Node.js app to Azure Web App - newspace-newsletter-api -> Run workflow
+- Track progress and logs in the Actions tab for that workflow run.
+
+## Post-deploy Validation
+
+1. API health:
+   - `curl -sS https://newspace-newsletter-api.azurewebsites.net/health`
+2. Aggregation trigger:
+   - `POST /api/newsletters/aggregate` with `x-aggregator-token`
+3. Pipeline monitor:
+   - `GET /api/newsletters/monitor/status` with `x-monitor-token`
 
 ## Troubleshooting
 
 If deployment fails:
-1. Check the Actions tab for error messages
-2. Verify the publish profile secret is correct
-3. Ensure all environment variables are set in Azure portal
-
-## Next Steps After First Deployment
-
-1. **Test the API**: `curl https://newspace-newsletter-api.azurewebsites.net/health`
-2. **Send test email**: 
-   ```bash
-   curl -X POST https://newspace-newsletter-api.azurewebsites.net/api/newsletters/send-test \
-     -H "Content-Type: application/json" \
-     -d '{"email": "helios.lam@oasahk.org"}'
-   ```
-3. **Check articles**: `curl https://newspace-newsletter-api.azurewebsites.net/api/newsletters/articles?limit=5`
+1. Confirm all three OIDC secrets are present and correct
+2. Confirm federated credential and RBAC assignments in Azure
+3. Check the failed step logs in GitHub Actions for the exact Azure CLI command output

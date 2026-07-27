@@ -5,7 +5,7 @@ import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import SubscriberStatusAuditLog from '../models/SubscriberStatusAuditLog';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '../services/emailService';
-import { Op } from 'sequelize';
+import { Op, col, fn, where } from 'sequelize';
 
 const requireAdminToken = (req: Request, res: Response): boolean => {
   const adminToken = process.env.ADMIN_TEST_TOKEN;
@@ -425,12 +425,19 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
       order: [['createdAt', 'DESC']]
     });
 
-    const emails = subscribers.map((subscriber) => subscriber.email);
-    const deliveryLogs = emails.length > 0
+    const normalizedEmails = Array.from(new Set(
+      subscribers
+        .map((subscriber) => String(subscriber.email || '').trim().toLowerCase())
+        .filter((email) => email.length > 0)
+    ));
+
+    const deliveryLogs = normalizedEmails.length > 0
       ? await NewsletterDeliveryLog.findAll({
           attributes: ['email', 'success', 'deliveredAt', 'frequency', 'errorMessage'],
           where: {
-            email: { [Op.in]: emails },
+            [Op.and]: [
+              where(fn('LOWER', col('email')), { [Op.in]: normalizedEmails })
+            ],
             triggerType: 'scheduled'
           },
           order: [['deliveredAt', 'DESC']]
@@ -439,13 +446,18 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
 
     const deliveryByEmail = new Map<string, NewsletterDeliveryLog[]>();
     deliveryLogs.forEach((log) => {
-      const existing = deliveryByEmail.get(log.email) || [];
+      const key = String(log.email || '').trim().toLowerCase();
+      if (!key) {
+        return;
+      }
+      const existing = deliveryByEmail.get(key) || [];
       existing.push(log);
-      deliveryByEmail.set(log.email, existing);
+      deliveryByEmail.set(key, existing);
     });
 
     const enrichedSubscribers = subscribers.map((subscriber) => {
-      const logs = deliveryByEmail.get(subscriber.email) || [];
+      const subscriberEmailKey = String(subscriber.email || '').trim().toLowerCase();
+      const logs = deliveryByEmail.get(subscriberEmailKey) || [];
       const latest = logs[0];
       const latestSuccess = logs.find((log) => log.success);
       const latestFailure = logs.find((log) => !log.success);

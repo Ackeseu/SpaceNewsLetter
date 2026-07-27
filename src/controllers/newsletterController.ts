@@ -7,7 +7,7 @@ import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import ArticleTopicSendStat from '../models/ArticleTopicSendStat';
 import { consumeLastEmailSendError, sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
-import { Op, QueryTypes, WhereOptions } from 'sequelize';
+import { Op, QueryTypes, WhereOptions, col, fn, where } from 'sequelize';
 import crypto from 'crypto';
 import NewsSource from '../models/NewsSource';
 import adminChangelogConfig from '../config/adminChangelog.json';
@@ -1225,7 +1225,9 @@ export const getDeliveryStatusByEmail = async (req: Request, res: Response): Pro
 
     const deliveries = await NewsletterDeliveryLog.findAll({
       where: {
-        email,
+        [Op.and]: [
+          where(fn('LOWER', col('email')), email)
+        ],
         deliveredAt: {
           [Op.gte]: rangeStart,
           [Op.lt]: rangeEnd

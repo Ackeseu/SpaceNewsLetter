@@ -433,12 +433,11 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
 
     const deliveryLogs = normalizedEmails.length > 0
       ? await NewsletterDeliveryLog.findAll({
-          attributes: ['email', 'success', 'deliveredAt', 'frequency', 'errorMessage'],
+          attributes: ['email', 'triggerType', 'success', 'deliveredAt', 'frequency', 'errorMessage'],
           where: {
             [Op.and]: [
               where(fn('LOWER', col('email')), { [Op.in]: normalizedEmails })
-            ],
-            triggerType: 'scheduled'
+            ]
           },
           order: [['deliveredAt', 'DESC']]
         })
@@ -458,12 +457,14 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
     const enrichedSubscribers = subscribers.map((subscriber) => {
       const subscriberEmailKey = String(subscriber.email || '').trim().toLowerCase();
       const logs = deliveryByEmail.get(subscriberEmailKey) || [];
+      const scheduledLogs = logs.filter((log) => log.triggerType === 'scheduled');
       const latest = logs[0];
-      const latestSuccess = logs.find((log) => log.success);
-      const latestFailure = logs.find((log) => !log.success);
+      const latestScheduled = scheduledLogs[0];
+      const latestSuccess = scheduledLogs.find((log) => log.success);
+      const latestFailure = scheduledLogs.find((log) => !log.success);
 
       let consecutiveFailures = 0;
-      for (const log of logs) {
+      for (const log of scheduledLogs) {
         if (log.success) {
           break;
         }
@@ -474,7 +475,10 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
         ...subscriber.toJSON(),
         deliveryStatus: {
           lastDeliveryAt: latest?.deliveredAt || null,
+          lastDeliveryTriggerType: latest?.triggerType || null,
           lastDeliverySuccess: latest ? latest.success : null,
+          lastScheduledDeliveryAt: latestScheduled?.deliveredAt || null,
+          hasScheduledHistory: scheduledLogs.length > 0,
           lastSuccessAt: latestSuccess?.deliveredAt || null,
           lastFailureAt: latestFailure?.deliveredAt || null,
           lastErrorMessage: latestFailure?.errorMessage || null,

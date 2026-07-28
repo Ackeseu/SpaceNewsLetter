@@ -153,16 +153,26 @@ function renderSubscribersTable(subscribers) {
       <tbody>
         ${subscribers.map(sub => {
           const delivery = sub.deliveryStatus || {};
+          const hasAnyHistory = Boolean(delivery.lastDeliveryAt);
+          const hasScheduledHistory = Boolean(delivery.hasScheduledHistory);
+          const isTestOnlyHistory = hasAnyHistory && !hasScheduledHistory;
           const isRisk = Number(delivery.consecutiveFailures || 0) >= 2;
-          const deliveryPill = delivery.lastDeliveryAt
-            ? `<span class="delivery-pill ${isRisk ? 'bad' : 'good'}">${isRisk ? 'At Risk' : 'Healthy'}</span>`
-            : '<span class="delivery-pill">No History</span>';
-          const deliveryMeta = delivery.lastDeliveryAt
+          const deliveryPill = !hasAnyHistory
+            ? '<span class="delivery-pill">No History</span>'
+            : isTestOnlyHistory
+              ? '<span class="delivery-pill">Test Only</span>'
+              : `<span class="delivery-pill ${isRisk ? 'bad' : 'good'}">${isRisk ? 'At Risk' : 'Healthy'}</span>`;
+          const deliveryTypeLabel = delivery.lastDeliveryTriggerType
+            ? String(delivery.lastDeliveryTriggerType)
+            : 'unknown';
+          const deliveryMeta = hasAnyHistory
             ? `
-              <div class="delivery-meta">Last: ${formatDateTime(delivery.lastDeliveryAt)}</div>
-              <div class="delivery-meta">Failures streak: ${delivery.consecutiveFailures || 0}</div>
+              <div class="delivery-meta">Last: ${formatDateTime(delivery.lastDeliveryAt)} (${deliveryTypeLabel})</div>
+              <div class="delivery-meta">Scheduled failures streak: ${delivery.consecutiveFailures || 0}</div>
+              ${isTestOnlyHistory ? '<div class="delivery-meta">No scheduled sends recorded yet</div>' : ''}
             `
-            : '<div class="delivery-meta">No scheduled sends recorded yet</div>';
+            : '';
+          const noHistoryMeta = '<div class="delivery-meta">No sends recorded yet</div>';
 
           return `
             <tr>
@@ -177,7 +187,7 @@ function renderSubscribersTable(subscribers) {
               <td>${sub.frequency || 'weekly'}</td>
               <td>
                 ${deliveryPill}
-                ${deliveryMeta}
+                ${hasAnyHistory ? deliveryMeta : noHistoryMeta}
               </td>
               <td>${(sub.topics || []).join(', ') || '-'}</td>
               <td>

@@ -5,7 +5,7 @@ import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import SubscriberStatusAuditLog from '../models/SubscriberStatusAuditLog';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '../services/emailService';
-import { Op, col, fn, where } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 
 const requireAdminToken = (req: Request, res: Response): boolean => {
   const adminToken = process.env.ADMIN_TEST_TOKEN;
@@ -432,25 +432,57 @@ export const listAllSubscribers = async (req: Request, res: Response): Promise<v
     ));
 
     const deliveryLogs = normalizedEmails.length > 0
-      ? await NewsletterDeliveryLog.findAll({
-          attributes: ['email', 'triggerType', 'success', 'deliveredAt', 'frequency', 'errorMessage'],
-          where: {
-            [Op.and]: [
-              where(fn('LOWER', col('email')), { [Op.in]: normalizedEmails })
-            ]
-          },
-          order: [['deliveredAt', 'DESC']]
-        })
+      ? await NewsletterDeliveryLog.sequelize!.query<{
+          email: string;
+          triggerType: 'scheduled' | 'test';
+          success: boolean;
+          deliveredAt: string | Date;
+          frequency: 'daily' | 'weekly' | 'monthly' | null;
+          errorMessage: string | null;
+          emailKey: string;
+        }>(
+          `
+          select
+            email,
+            "triggerType" as "triggerType",
+            success,
+            "deliveredAt" as "deliveredAt",
+            frequency,
+            "errorMessage" as "errorMessage",
+            lower(trim(email)) as "emailKey"
+          from newsletter_delivery_logs
+          where lower(trim(email)) in (:normalizedEmails)
+          order by "deliveredAt" desc
+          `,
+          {
+            replacements: { normalizedEmails },
+            type: QueryTypes.SELECT
+          }
+        )
       : [];
 
-    const deliveryByEmail = new Map<string, NewsletterDeliveryLog[]>();
+    const deliveryByEmail = new Map<string, Array<{
+      email: string;
+      triggerType: 'scheduled' | 'test';
+      success: boolean;
+      deliveredAt: string | Date;
+      frequency: 'daily' | 'weekly' | 'monthly' | null;
+      errorMessage: string | null;
+    }>>();
     deliveryLogs.forEach((log) => {
-      const key = String(log.email || '').trim().toLowerCase();
+      const key = String(log.emailKey || '').trim().toLowerCase();
       if (!key) {
         return;
       }
       const existing = deliveryByEmail.get(key) || [];
-      existing.push(log);
+      existing.push({
+        email: log.email,
+        triggerType: log.triggerType,
+        success: Boolean(log.success),
+        deliveredAt: log.deliveredAt,
+        frequency: log.frequency,
+        errorMessage: log.errorMessage
+      });
       deliveryByEmail.set(key, existing);
     });
 

@@ -88,4 +88,31 @@ describe('sendNewsletterEmail payload fallback behavior', () => {
     expect(sentMessages[0].attachments).toEqual([]);
     expect(sentMessages[0].content.html).toContain('https://newspace-newsletter-api.azurewebsites.net/oasa-banner.png');
   });
+
+  test('does not include bootcamp items in the OASA updates section', async () => {
+    const { emailService, sentMessages } = loadEmailServiceWithMockClient({
+      EMAIL_FORCE_EXTERNAL_IMAGES: 'true',
+      EMAIL_PAYLOAD_SOFT_LIMIT_BYTES: '9500000'
+    });
+
+    const ok = await emailService.sendNewsletterEmail(
+      'recipient@example.com',
+      [
+        makeArticle({
+          source: 'OASA Events',
+          title: 'OASA Bootcamp',
+          description: 'A bootcamp event for members'
+        })
+      ],
+      'unsubscribe-token',
+      'preferences-token',
+      'daily'
+    );
+
+    expect(ok).toBe(true);
+    expect(sentMessages).toHaveLength(1);
+    const html = sentMessages[0].content.html;
+    expect(html).not.toContain('OASA Bootcamp');
+    expect(html).not.toContain('bootcamp');
+  });
 });

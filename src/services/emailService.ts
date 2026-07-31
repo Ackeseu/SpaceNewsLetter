@@ -878,7 +878,19 @@ export const sendNewsletterEmail = async (
       .filter((attachment): attachment is EmailAttachment => Boolean(attachment))
   ];
 
-  const oasaArticles = articleWithImageCids.filter(({ article }) => String(article?.source || '').trim() === OASA_EVENTS_SOURCE);
+  const isExcludedOasaArticle = (article: any): boolean => {
+    const searchableText = [article?.title, article?.description, article?.link]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+      .toLowerCase();
+
+    return /bootcamp/i.test(searchableText);
+  };
+
+  const oasaArticles = articleWithImageCids.filter(({ article }) => {
+    const isOasaEvent = String(article?.source || '').trim() === OASA_EVENTS_SOURCE;
+    return isOasaEvent && !isExcludedOasaArticle(article);
+  });
   const getPublishedTimestamp = (value: unknown): number => {
     const parsed = new Date(String(value || ''));
     const timestamp = parsed.getTime();

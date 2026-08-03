@@ -7,6 +7,7 @@ let adminToken = localStorage.getItem('adminToken');
 let allSubscribers = [];
 let allSubscribersForPreferences = [];
 let allSources = [];
+let currentPrioritySettings = null;
 let currentEditId = null;
 let currentEditEmail = null;
 let monitorLastUpdatedAt = null;
@@ -292,7 +293,122 @@ async function loadDashboard() {
   await loadSubscribers();
   await loadPrefEmails();
   await loadSources();
+  await loadPrioritySettings();
   await loadMonitorStatus();
+}
+
+const DEFAULT_PRIORITY_SETTINGS = {
+  priorityBase: {
+    seaEvent: 500,
+    hkNewspaceBusiness: 470,
+    hkNewspaceOrTech: 440,
+    asiaBusiness: 400,
+    globalBusiness: 400,
+    globalTechnology: 380,
+    remainingSpace: 100
+  },
+  sessionPlan: {
+    sea: 2,
+    hongKong: 3,
+    china: 1,
+    world: 4
+  }
+};
+
+function normalizePositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.floor(parsed));
+}
+
+function readPrioritySettingsForm() {
+  return {
+    priorityBase: {
+      seaEvent: normalizePositiveInteger(document.getElementById('prioritySeaEvent')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.seaEvent),
+      hkNewspaceBusiness: normalizePositiveInteger(document.getElementById('priorityHkNewspaceBusiness')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.hkNewspaceBusiness),
+      hkNewspaceOrTech: normalizePositiveInteger(document.getElementById('priorityHkNewspaceOrTech')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.hkNewspaceOrTech),
+      asiaBusiness: normalizePositiveInteger(document.getElementById('priorityAsiaBusiness')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.asiaBusiness),
+      globalBusiness: normalizePositiveInteger(document.getElementById('priorityGlobalBusiness')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.globalBusiness),
+      globalTechnology: normalizePositiveInteger(document.getElementById('priorityGlobalTechnology')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.globalTechnology),
+      remainingSpace: normalizePositiveInteger(document.getElementById('priorityRemainingSpace')?.value, DEFAULT_PRIORITY_SETTINGS.priorityBase.remainingSpace)
+    },
+    sessionPlan: {
+      sea: normalizePositiveInteger(document.getElementById('sessionSea')?.value, DEFAULT_PRIORITY_SETTINGS.sessionPlan.sea),
+      hongKong: normalizePositiveInteger(document.getElementById('sessionHongKong')?.value, DEFAULT_PRIORITY_SETTINGS.sessionPlan.hongKong),
+      china: normalizePositiveInteger(document.getElementById('sessionChina')?.value, DEFAULT_PRIORITY_SETTINGS.sessionPlan.china),
+      world: normalizePositiveInteger(document.getElementById('sessionWorld')?.value, DEFAULT_PRIORITY_SETTINGS.sessionPlan.world)
+    }
+  };
+}
+
+function applyPrioritySettingsToForm(settings) {
+  const safe = settings || DEFAULT_PRIORITY_SETTINGS;
+
+  const setValue = (id, value) => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.value = String(value);
+    }
+  };
+
+  setValue('prioritySeaEvent', safe.priorityBase?.seaEvent ?? safe.priorityBase?.oasaEvent ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.seaEvent);
+  setValue('priorityHkNewspaceBusiness', safe.priorityBase?.hkNewspaceBusiness ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.hkNewspaceBusiness);
+  setValue('priorityHkNewspaceOrTech', safe.priorityBase?.hkNewspaceOrTech ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.hkNewspaceOrTech);
+  setValue('priorityAsiaBusiness', safe.priorityBase?.asiaBusiness ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.asiaBusiness);
+  setValue('priorityGlobalBusiness', safe.priorityBase?.globalBusiness ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.globalBusiness);
+  setValue('priorityGlobalTechnology', safe.priorityBase?.globalTechnology ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.globalTechnology);
+  setValue('priorityRemainingSpace', safe.priorityBase?.remainingSpace ?? DEFAULT_PRIORITY_SETTINGS.priorityBase.remainingSpace);
+
+  setValue('sessionSea', safe.sessionPlan?.sea ?? safe.sessionPlan?.oasa ?? DEFAULT_PRIORITY_SETTINGS.sessionPlan.sea);
+  setValue('sessionHongKong', safe.sessionPlan?.hongKong ?? DEFAULT_PRIORITY_SETTINGS.sessionPlan.hongKong);
+  setValue('sessionChina', safe.sessionPlan?.china ?? DEFAULT_PRIORITY_SETTINGS.sessionPlan.china);
+  setValue('sessionWorld', safe.sessionPlan?.world ?? DEFAULT_PRIORITY_SETTINGS.sessionPlan.world);
+}
+
+async function loadPrioritySettings() {
+  const settingsForm = document.getElementById('prioritySettingsForm');
+  if (!settingsForm) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/newsletters/admin/priority-settings`, {
+      headers: { 'x-admin-token': adminToken }
+    });
+
+    if (!response.ok) {
+      applyPrioritySettingsToForm(DEFAULT_PRIORITY_SETTINGS);
+      return;
+    }
+
+    const payload = await response.json();
+    currentPrioritySettings = payload.settings || DEFAULT_PRIORITY_SETTINGS;
+    applyPrioritySettingsToForm(currentPrioritySettings);
+  } catch (error) {
+    applyPrioritySettingsToForm(DEFAULT_PRIORITY_SETTINGS);
+  }
+}
+
+async function savePrioritySettings(settingsPayload) {
+  const response = await fetch(`${API_URL}/api/newsletters/admin/priority-settings`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-token': adminToken
+    },
+    body: JSON.stringify(settingsPayload)
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || 'Failed to update priority settings');
+  }
+
+  currentPrioritySettings = payload.settings || settingsPayload;
+  applyPrioritySettingsToForm(currentPrioritySettings);
 }
 
 async function loadMonitorStatus() {
@@ -1165,6 +1281,38 @@ if (sourceForm) {
       showMessage('dashMessage', error.error || 'Failed to add source', 'error');
     } catch (error) {
       showMessage('dashMessage', 'Error adding source', 'error');
+    }
+  });
+}
+
+const prioritySettingsForm = document.getElementById('prioritySettingsForm');
+if (prioritySettingsForm) {
+  prioritySettingsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const nextSettings = readPrioritySettingsForm();
+
+    try {
+      await savePrioritySettings(nextSettings);
+      showMessage('dashMessage', 'Priority settings updated', 'success');
+    } catch (error) {
+      showMessage('dashMessage', error instanceof Error ? error.message : 'Error updating priority settings', 'error');
+    }
+  });
+}
+
+const resetPrioritySettingsBtn = document.getElementById('resetPrioritySettingsBtn');
+if (resetPrioritySettingsBtn) {
+  resetPrioritySettingsBtn.addEventListener('click', async () => {
+    if (!confirm('Reset priority and mix settings to defaults?')) {
+      return;
+    }
+
+    try {
+      await savePrioritySettings(DEFAULT_PRIORITY_SETTINGS);
+      showMessage('dashMessage', 'Priority settings reset to defaults', 'success');
+    } catch (error) {
+      showMessage('dashMessage', error instanceof Error ? error.message : 'Error resetting priority settings', 'error');
     }
   });
 }

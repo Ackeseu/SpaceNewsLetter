@@ -1,0 +1,17 @@
+{
+  "priorityBase": {
+    "seaEvent": 500,
+    "hkNewspaceBusiness": 470,
+    "hkNewspaceOrTech": 440,
+    "asiaBusiness": 400,
+    "globalBusiness": 400,
+    "globalTechnology": 380,
+    "remainingSpace": 100
+  },
+  "sessionPlan": {
+    "sea": 2,
+    "hongKong": 3,
+    "china": 1,
+    "world": 4
+  }
+}

@@ -66,7 +66,7 @@ describe('sendNewsletterEmail payload fallback behavior', () => {
     expect(ok).toBe(true);
     expect(sentMessages).toHaveLength(1);
     expect(sentMessages[0].attachments).toEqual([]);
-    expect(sentMessages[0].content.html).toContain('https://newspace-newsletter-api.azurewebsites.net/oasa-banner.png');
+    expect(sentMessages[0].content.html).toContain('https://newspace-newsletter-api.azurewebsites.net/SEA%20Banner%20Copy.png');
   });
 
   test('falls back to zero-attachment variant when payload soft limit blocks inline variants', async () => {
@@ -86,10 +86,10 @@ describe('sendNewsletterEmail payload fallback behavior', () => {
     expect(ok).toBe(true);
     expect(sentMessages).toHaveLength(1);
     expect(sentMessages[0].attachments).toEqual([]);
-    expect(sentMessages[0].content.html).toContain('https://newspace-newsletter-api.azurewebsites.net/oasa-banner.png');
+    expect(sentMessages[0].content.html).toContain('https://newspace-newsletter-api.azurewebsites.net/SEA%20Banner%20Copy.png');
   });
 
-  test('does not include bootcamp items in the OASA updates section', async () => {
+  test('does not include bootcamp items in the SEA updates section', async () => {
     const { emailService, sentMessages } = loadEmailServiceWithMockClient({
       EMAIL_FORCE_EXTERNAL_IMAGES: 'true',
       EMAIL_PAYLOAD_SOFT_LIMIT_BYTES: '9500000'
@@ -99,8 +99,8 @@ describe('sendNewsletterEmail payload fallback behavior', () => {
       'recipient@example.com',
       [
         makeArticle({
-          source: 'OASA Events',
-          title: 'OASA Bootcamp',
+          source: 'SEA Events',
+          title: 'SEA Bootcamp',
           description: 'A bootcamp event for members'
         })
       ],
@@ -112,7 +112,7 @@ describe('sendNewsletterEmail payload fallback behavior', () => {
     expect(ok).toBe(true);
     expect(sentMessages).toHaveLength(1);
     const html = sentMessages[0].content.html;
-    expect(html).not.toContain('OASA Bootcamp');
+    expect(html).not.toContain('SEA Bootcamp');
     expect(html).not.toContain('bootcamp');
   });
 });

@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SEA NewSpace Summary</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
+    :root {
+      --sea-navy-950: #051328;
+      --sea-navy-900: #0a1f3d;
+      --sea-navy-800: #12335f;
+      --sea-sky-400: #50b6ff;
+      --sea-sky-300: #8ccfff;
+      --sea-gold-400: #d5b26f;
+      --sea-ink-100: #f4f8ff;
+      --sea-ink-300: #b8c6de;
+      --sea-card: rgba(5, 19, 40, 0.72);
+      --sea-line: rgba(140, 207, 255, 0.32);
+      --sea-success: #2de0a7;
+      --sea-error: #ff7c9f;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -12,29 +29,35 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
-      background: linear-gradient(135deg, #0a0e27 0%, #16213e 50%, #1a3a52 100%);
-      color: #e8e8e8;
+      font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+      color: var(--sea-ink-100);
       line-height: 1.6;
       min-height: 100vh;
+      background:
+        radial-gradient(1200px 550px at 5% -10%, rgba(80, 182, 255, 0.22), transparent 62%),
+        radial-gradient(950px 520px at 95% -12%, rgba(213, 178, 111, 0.20), transparent 66%),
+        linear-gradient(165deg, var(--sea-navy-950) 0%, var(--sea-navy-900) 58%, #17335c 100%);
+      background-attachment: fixed;
     }
 
     header {
-      background: rgba(10, 14, 39, 0.95);
-      padding: 20px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(4, 14, 30, 0.72);
+      backdrop-filter: blur(9px);
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(140, 207, 255, 0.2);
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 50;
     }
 
     .header-content {
-      max-width: 1200px;
+      max-width: 1100px;
       margin: 0 auto;
       padding: 0 20px;
       display: flex;
-      justify-content: center;
+      justify-content: space-between;
       align-items: center;
+      gap: 20px;
     }
 
     .logo {
@@ -44,118 +67,154 @@
     }
 
     .logo img {
-      width: min(100%, 560px);
-      max-height: 72px;
+      width: min(100%, 620px);
+      max-height: 110px;
       height: auto;
       display: block;
     }
 
+    .top-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 13px;
+      color: var(--sea-ink-300);
+    }
+
+    .top-actions a {
+      color: var(--sea-sky-300);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.2s ease;
+    }
+
+    .top-actions a:hover {
+      border-color: var(--sea-sky-300);
+    }
+
     .container {
-      max-width: 900px;
-      margin: 60px auto;
+      max-width: 980px;
+      margin: 44px auto;
       padding: 0 20px;
     }
 
     .hero {
       text-align: center;
-      margin-bottom: 60px;
+      margin-bottom: 36px;
     }
 
-    .rocket-icon {
-      font-size: 60px;
-      margin-bottom: 30px;
-      display: inline-block;
-      animation: float 3s ease-in-out infinite;
-    }
-
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-20px); }
+    .eyebrow {
+      font-family: 'Montserrat', 'Segoe UI', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--sea-sky-300);
+      margin-bottom: 12px;
     }
 
     h1 {
-      font-size: 42px;
-      margin-bottom: 15px;
-      background: linear-gradient(135deg, #00d4ff 0%, #00f5ff 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      font-weight: 700;
+      font-family: 'Montserrat', 'Segoe UI', sans-serif;
+      font-size: clamp(34px, 5.8vw, 56px);
+      margin-bottom: 16px;
+      line-height: 1.08;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      text-wrap: balance;
     }
 
     .subtitle {
-      font-size: 18px;
-      color: #b0b0b0;
-      margin-bottom: 30px;
-      line-height: 1.8;
+      max-width: 780px;
+      margin: 0 auto;
+      font-size: clamp(17px, 2vw, 21px);
+      color: #d4deed;
+      line-height: 1.68;
     }
 
     .form-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(0, 212, 255, 0.2);
-      border-radius: 12px;
-      padding: 40px;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 8px 32px rgba(0, 212, 255, 0.1);
+      background: linear-gradient(165deg, rgba(6, 24, 49, 0.93) 0%, var(--sea-card) 100%);
+      border: 1px solid var(--sea-line);
+      border-radius: 20px;
+      padding: 34px;
+      box-shadow: 0 22px 52px rgba(4, 10, 22, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .form-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(120deg, rgba(80, 182, 255, 0.15), transparent 32%),
+        linear-gradient(300deg, rgba(213, 178, 111, 0.13), transparent 40%);
     }
 
     .form-group {
-      margin-bottom: 25px;
+      margin-bottom: 22px;
+      position: relative;
+      z-index: 1;
     }
 
     label {
       display: block;
       font-weight: 600;
-      color: #fff;
-      margin-bottom: 10px;
-      font-size: 14px;
+      color: #e8f0ff;
+      margin-bottom: 9px;
+      font-size: 13px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.09em;
     }
 
     input[type="text"],
     input[type="email"],
     select {
       width: 100%;
-      padding: 14px 16px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(0, 212, 255, 0.3);
-      border-radius: 6px;
-      color: #fff;
-      font-size: 14px;
-      transition: all 0.3s;
+      padding: 14px 15px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(140, 207, 255, 0.35);
+      border-radius: 10px;
+      color: #ffffff;
+      font-size: 15px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
       font-family: inherit;
     }
 
     input[type="text"]::placeholder,
     input[type="email"]::placeholder {
-      color: #666;
+      color: #8fa2bf;
     }
 
     input[type="text"]:focus,
     input[type="email"]:focus,
     select:focus {
       outline: none;
-      border-color: #00d4ff;
-      background: rgba(0, 212, 255, 0.08);
-      box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+      border-color: var(--sea-sky-300);
+      background: rgba(80, 182, 255, 0.09);
+      box-shadow: 0 0 0 3px rgba(80, 182, 255, 0.24);
     }
 
     .topics-group {
-      margin-bottom: 30px;
+      margin-bottom: 26px;
+      position: relative;
+      z-index: 1;
     }
 
     .checkbox-wrapper {
       display: flex;
       align-items: center;
-      margin-bottom: 14px;
-      padding: 10px;
-      border-radius: 6px;
-      transition: all 0.3s;
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(140, 207, 255, 0.16);
+      transition: background 0.2s ease, border-color 0.2s ease;
     }
 
     .checkbox-wrapper:hover {
-      background: rgba(0, 212, 255, 0.05);
+      background: rgba(80, 182, 255, 0.09);
+      border-color: rgba(140, 207, 255, 0.35);
     }
 
     .checkbox-wrapper input[type="checkbox"] {
@@ -163,14 +222,14 @@
       height: 20px;
       margin-right: 12px;
       cursor: pointer;
-      accent-color: #00d4ff;
+      accent-color: var(--sea-sky-400);
     }
 
     .checkbox-wrapper label {
       margin: 0;
       cursor: pointer;
       font-weight: 400;
-      color: #b0b0b0;
+      color: #d6e2f4;
       text-transform: none;
       letter-spacing: normal;
     }
@@ -186,51 +245,53 @@
       align-items: center;
       padding: 12px 16px;
       background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(0, 212, 255, 0.2);
-      border-radius: 6px;
+      border: 1px solid rgba(140, 207, 255, 0.2);
+      border-radius: 10px;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: border-color 0.2s ease, background 0.2s ease;
     }
 
     .radio-label:hover {
-      border-color: #00d4ff;
-      background: rgba(0, 212, 255, 0.08);
+      border-color: var(--sea-sky-300);
+      background: rgba(80, 182, 255, 0.1);
     }
 
     .radio-label input[type="radio"] {
       margin-right: 8px;
       cursor: pointer;
-      accent-color: #00d4ff;
+      accent-color: var(--sea-sky-400);
     }
 
     .radio-label span {
-      color: #b0b0b0;
+      color: #d8e2f1;
       font-weight: 500;
     }
 
     .radio-label input[type="radio"]:checked + span {
-      color: #00d4ff;
+      color: var(--sea-sky-300);
     }
 
     button {
       width: 100%;
       padding: 16px;
-      background: linear-gradient(135deg, #00d4ff 0%, #00f5ff 100%);
-      color: #0a0e27;
+      background: linear-gradient(110deg, #ffffff 0%, #dfeaf7 62%, #d5b26f 100%);
+      color: #0a1f3d;
       border: none;
-      border-radius: 6px;
+      border-radius: 10px;
       font-size: 16px;
       font-weight: 700;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0.08em;
       margin-top: 10px;
+      position: relative;
+      z-index: 1;
     }
 
     button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 12px 40px rgba(0, 212, 255, 0.4);
+      box-shadow: 0 14px 34px rgba(7, 21, 45, 0.55);
     }
 
     button:active {
@@ -244,33 +305,37 @@
 
     .message {
       padding: 16px;
-      border-radius: 6px;
+      border-radius: 10px;
       margin-top: 20px;
       display: none;
       font-weight: 500;
       border-left: 4px solid;
+      position: relative;
+      z-index: 1;
     }
 
     .message.success {
-      background: rgba(0, 200, 100, 0.15);
-      color: #00ff88;
-      border-color: #00ff88;
+      background: rgba(45, 224, 167, 0.15);
+      color: var(--sea-success);
+      border-color: var(--sea-success);
       display: block;
     }
 
     .message.error {
-      background: rgba(255, 50, 80, 0.15);
-      color: #ff6b7a;
-      border-color: #ff6b7a;
+      background: rgba(255, 124, 159, 0.15);
+      color: var(--sea-error);
+      border-color: var(--sea-error);
       display: block;
     }
 
     .loading {
       display: none;
       text-align: center;
-      color: #00d4ff;
+      color: var(--sea-sky-300);
       font-weight: 600;
       margin-top: 20px;
+      position: relative;
+      z-index: 1;
     }
 
     .loading.active {
@@ -281,8 +346,8 @@
       display: inline-block;
       width: 20px;
       height: 20px;
-      border: 3px solid rgba(0, 212, 255, 0.3);
-      border-top-color: #00d4ff;
+      border: 3px solid rgba(140, 207, 255, 0.3);
+      border-top-color: var(--sea-sky-300);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin-right: 10px;
@@ -294,16 +359,16 @@
     }
 
     footer {
-      margin-top: 80px;
-      padding: 40px 0;
+      margin-top: 60px;
+      padding: 34px 0 40px;
       text-align: center;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      color: #666;
-      font-size: 13px;
+      border-top: 1px solid rgba(140, 207, 255, 0.2);
+      color: var(--sea-ink-300);
+      font-size: 14px;
     }
 
     footer a {
-      color: #00d4ff;
+      color: var(--sea-sky-300);
       text-decoration: none;
     }
 
@@ -312,24 +377,29 @@
     }
 
     @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .top-actions {
+        font-size: 12px;
+      }
+
       h1 {
-        font-size: 32px;
+        font-size: 34px;
       }
 
       .subtitle {
-        font-size: 16px;
+        font-size: 17px;
       }
 
       .form-card {
-        padding: 30px 20px;
+        padding: 26px 20px;
       }
 
       .frequency-options {
         grid-template-columns: 1fr;
-      }
-
-      .rocket-icon {
-        font-size: 48px;
       }
     }
   </style>
@@ -337,18 +407,23 @@
 <body>
   <header>
     <div class="header-content">
-      <a href="/" class="logo" aria-label="OASA home">
+      <a href="/" class="logo" aria-label="SEA home">
         <img src="/SEA%20Banner%20Copy.png" alt="SEA banner">
       </a>
+      <div class="top-actions">
+        <a href="https://www.seahk.org/about.html" target="_blank" rel="noopener noreferrer">About SEA</a>
+        <a href="https://www.seahk.org/events.html" target="_blank" rel="noopener noreferrer">Events</a>
+        <a href="https://www.seahk.org/membership.html" target="_blank" rel="noopener noreferrer">Membership</a>
+      </div>
     </div>
   </header>
 
   <div class="container">
     <div class="hero">
-
+      <p class="eyebrow">Hong Kong's Space Economy Association</p>
       <h1>SEA NewSpace Summary</h1>
       <p class="subtitle">
-        Stay informed about the latest developments in space exploration, the low-altitude economy, and emerging space technologies reshaping our future.
+        Curated intelligence for members shaping Hong Kong's role in the global space economy, from market shifts and policy moves to mission-critical technology signals.
       </p>
     </div>
 
@@ -415,11 +490,11 @@
   </div>
 
   <footer>
-    <p>We respect your privacy. Unsubscribe anytime from any newsletter email.</p>
+    <p>Stay informed with SEA updates, strategic insights, and upcoming opportunities.</p>
     <p style="margin-top: 10px;">
-      <a href="https://www.oasahk.org">OASA Official Site</a>
+      <a href="https://www.seahk.org" target="_blank" rel="noopener noreferrer">Visit www.seahk.org</a>
     </p>
-    <p style="margin-top: 15px; color: #555;">© 2025 Orion Astropreneur Space Academy</p>
+    <p style="margin-top: 15px; color: #90a5c4;">© 2026 Space Economy Association (Hong Kong) Limited</p>
   </footer>
 
   <script src="/index.js"></script>

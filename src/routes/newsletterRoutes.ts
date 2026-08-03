@@ -14,7 +14,9 @@ import {
   createNewsSource,
   deleteNewsSource,
   testNewsSource,
-  getAdminChangelog
+  getAdminChangelog,
+  getNewsletterPrioritySettingsAdmin,
+  updateNewsletterPrioritySettingsAdmin
 } from '../controllers/newsletterController';
 
 const router = Router();
@@ -44,6 +46,8 @@ router.post(
 router.delete('/sources/:id', deleteNewsSource);
 router.post('/sources/:id/test', testNewsSource);
 router.get('/admin/changelog', getAdminChangelog);
+router.get('/admin/priority-settings', getNewsletterPrioritySettingsAdmin);
+router.put('/admin/priority-settings', updateNewsletterPrioritySettingsAdmin);
 
 // Send test newsletter
 router.post(

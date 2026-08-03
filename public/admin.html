@@ -961,8 +961,8 @@
   <!-- Dashboard -->
   <div class="dashboard" id="dashboard">
     <div class="header">
-      <div class="brand-logo" aria-label="OASA admin dashboard">
-        <img src="/oasa-logo.png" alt="OASA logo">
+      <div class="brand-logo" aria-label="SEA admin dashboard">
+        <img src="/SEA%20Banner%20Copy.png" alt="SEA logo">
       </div>
       <div class="header-actions">
         <a class="logout-btn" href="https://newspace-newsletter-api.azurewebsites.net/health" target="_blank" rel="noopener noreferrer">API Status</a>
@@ -1214,6 +1214,76 @@
               <input type="text" id="sourceCategories" placeholder="space,business,news">
             </div>
             <button type="submit" style="margin-top: 20px;">Add Source</button>
+          </form>
+        </div>
+
+        <div class="form-card">
+          <h2>Priority & Mix Settings</h2>
+          <form id="prioritySettingsForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="prioritySeaEvent">Priority: SEA Events</label>
+                <input type="number" id="prioritySeaEvent" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="priorityHkNewspaceBusiness">Priority: HK NewSpace Business</label>
+                <input type="number" id="priorityHkNewspaceBusiness" min="0" step="1" required>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="priorityHkNewspaceOrTech">Priority: HK NewSpace/Tech</label>
+                <input type="number" id="priorityHkNewspaceOrTech" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="priorityAsiaBusiness">Priority: Asia Business</label>
+                <input type="number" id="priorityAsiaBusiness" min="0" step="1" required>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="priorityGlobalBusiness">Priority: Global Business</label>
+                <input type="number" id="priorityGlobalBusiness" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="priorityGlobalTechnology">Priority: Global Technology</label>
+                <input type="number" id="priorityGlobalTechnology" min="0" step="1" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="priorityRemainingSpace">Priority: Remaining Space Items</label>
+              <input type="number" id="priorityRemainingSpace" min="0" step="1" required>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="sessionSea">Mix Count: SEA</label>
+                <input type="number" id="sessionSea" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="sessionHongKong">Mix Count: Hong Kong</label>
+                <input type="number" id="sessionHongKong" min="0" step="1" required>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="sessionChina">Mix Count: China</label>
+                <input type="number" id="sessionChina" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="sessionWorld">Mix Count: World</label>
+                <input type="number" id="sessionWorld" min="0" step="1" required>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top: 20px;">
+              <button type="submit" style="margin-top: 0;">Save Priority Settings</button>
+              <button type="button" id="resetPrioritySettingsBtn" style="margin-top: 0;">Reset to Defaults</button>
+            </div>
           </form>
         </div>
 

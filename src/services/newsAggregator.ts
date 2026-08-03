@@ -5,6 +5,7 @@ import { Op } from 'sequelize';
 import Article from '../models/Article';
 import NewsSource from '../models/NewsSource';
 import { buildArticleSummary, trimTextForEmail } from '../utils/articleSummary';
+import { getNewsletterPrioritySettings } from '../config/newsletterPrioritySettings';
 import {
   passesCrimeWarFilter,
   passesTopicalRelevanceFilter
@@ -378,18 +379,18 @@ const SPACE_CORE_KEYWORDS = [
   'payload', 'constellation', 'earth observation', 'remote sensing', 'navigation'
 ];
 
-const OASA_EVENTS_URL = 'https://www.oasahk.org/events';
-const OASA_EVENTS_SOURCE = 'OASA Events';
-const OASA_EVENTS_CATEGORY = ['space', 'events', 'oasa', 'hong-kong'];
-const OASA_EVENTS_REGION = 'hong-kong';
-const OASA_EVENTS_TITLE_EXCLUSIONS = [
+const SEA_EVENTS_URL = 'https://www.seahk.org/events.html';
+const SEA_EVENTS_SOURCE = 'SEA Events';
+const SEA_EVENTS_CATEGORY = ['space', 'events', 'sea', 'oasa', 'hong-kong'];
+const SEA_EVENTS_REGION = 'hong-kong';
+const SEA_EVENTS_TITLE_EXCLUSIONS = [
   'share event on x',
   'share event on facebook',
   'share event',
   'secure your spot'
 ];
-const OASA_EVENTS_GENERIC_TITLES = new Set(['rsvp', 'details', 'more info']);
-const OASA_EVENTS_DESCRIPTION_CTA_PATTERN = /(more info|rsvp|secure your spot)/gi;
+const SEA_EVENTS_GENERIC_TITLES = new Set(['rsvp', 'details', 'more info']);
+const SEA_EVENTS_DESCRIPTION_CTA_PATTERN = /(more info|rsvp|secure your spot)/gi;
 
 // ─── InvestHK + OASES (HK Government) News Sources ───────────────────────────
 
@@ -733,13 +734,16 @@ const isHongKongFocusedNewSpaceArticle = (
   const link = (metadata?.link || '').toLowerCase();
   const category = (metadata?.category || []).map((value) => value.toLowerCase());
 
-  const isOasaEvent =
-    source.includes('oasa')
+  const isSeaEvent =
+    source.includes('sea')
+    || source.includes('oasa')
+    || category.includes('sea')
     || category.includes('oasa')
-    || (category.includes('events') && link.includes('oasahk.org'))
+    || (category.includes('events') && (link.includes('seahk.org') || link.includes('oasahk.org')))
+    || link.includes('seahk.org/event')
     || link.includes('oasahk.org/event');
 
-  if (isOasaEvent) {
+  if (isSeaEvent) {
     return true;
   }
 
@@ -779,6 +783,7 @@ function calculateArticlePriority(
     link?: string;
   }
 ): number {
+  const { priorityBase } = getNewsletterPrioritySettings();
   const text = `${title} ${description}`.toLowerCase();
   const source = (metadata?.source || '').toLowerCase();
   const region = (metadata?.region || '').toLowerCase();
@@ -807,52 +812,57 @@ function calculateArticlePriority(
     || ASIA_KEYWORDS.some((keyword) => text.includes(keyword))
     || HONG_KONG_KEYWORDS.some((keyword) => text.includes(keyword));
 
-  const isOasaEvent =
-    source.includes('oasa')
+  const isSeaEvent =
+    source.includes('sea')
+    || source.includes('oasa')
+    || category.includes('sea')
     || category.includes('oasa')
-    || (category.includes('events') && link.includes('oasahk.org'))
+    || (category.includes('events') && (link.includes('seahk.org') || link.includes('oasahk.org')))
+    || link.includes('seahk.org/event')
     || link.includes('oasahk.org/event');
 
   // Requested display priority order:
-  // 1) OASA events
+  // 1) SEA events
   // 2) Asia related space business
   // 3) Global space business
   // 4) Global space technology
   // 5) Remaining space items
-  if (isOasaEvent) {
-    return 500 + businessMatches + techMatches;
+  if (isSeaEvent) {
+    return priorityBase.seaEvent + businessMatches + techMatches;
   }
 
   if (isHongKongRelated && isNewSpace && isBusiness) {
-    return 470 + businessMatches + techMatches + newSpaceMatches;
+    return priorityBase.hkNewspaceBusiness + businessMatches + techMatches + newSpaceMatches;
   }
 
   if (isHongKongRelated && (isNewSpace || isTechnology)) {
-    return 440 + businessMatches + techMatches + newSpaceMatches;
+    return priorityBase.hkNewspaceOrTech + businessMatches + techMatches + newSpaceMatches;
   }
 
   if (isAsiaRelated && isBusiness) {
-    return 400 + businessMatches;
+    return priorityBase.asiaBusiness + businessMatches;
   }
 
+  // Keep global business/technology competitive with Asia weighting
+  // so world coverage can reliably contribute to a balanced newsletter mix.
   if (isBusiness) {
-    return 300 + businessMatches;
+    return priorityBase.globalBusiness + businessMatches;
   }
 
   if (isTechnology) {
-    return 200 + techMatches;
+    return priorityBase.globalTechnology + techMatches;
   }
 
-  return 100;
+  return priorityBase.remainingSpace;
 }
 
 const normalizeText = (value: string): string => value.replace(/\s+/g, ' ').trim();
 
-const stripOasaDescriptionCtas = (value: string): string => normalizeText(
-  value.replace(OASA_EVENTS_DESCRIPTION_CTA_PATTERN, ' ')
+const stripSeaDescriptionCtas = (value: string): string => normalizeText(
+  value.replace(SEA_EVENTS_DESCRIPTION_CTA_PATTERN, ' ')
 );
 
-const resolveAbsoluteUrl = (rawUrl?: string, baseUrl = OASA_EVENTS_URL): string | undefined => {
+const resolveAbsoluteUrl = (rawUrl?: string, baseUrl = SEA_EVENTS_URL): string | undefined => {
   if (!rawUrl) {
     return undefined;
   }
@@ -889,13 +899,13 @@ const extractWixWidth = (imageUrl: string): number | undefined => {
   return parsed;
 };
 
-const isLikelyOasaEventImageUrl = (imageUrl?: string): boolean => {
+const isLikelySeaEventImageUrl = (imageUrl?: string): boolean => {
   if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
     return false;
   }
 
   const lower = imageUrl.toLowerCase();
-  if (lower.includes('oasa_logo') || lower.includes('/logo') || lower.includes('favicon')) {
+  if (lower.includes('oasa_logo') || lower.includes('sea_logo') || lower.includes('/logo') || lower.includes('favicon')) {
     return false;
   }
 
@@ -907,13 +917,13 @@ const isLikelyOasaEventImageUrl = (imageUrl?: string): boolean => {
   return true;
 };
 
-const isLowQualityOasaImageUrl = (imageUrl?: string): boolean => {
+const isLowQualitySeaImageUrl = (imageUrl?: string): boolean => {
   if (!imageUrl) {
     return true;
   }
 
   const lower = imageUrl.toLowerCase();
-  if (lower.includes('oasa_logo') || lower.includes('/logo') || lower.includes('favicon')) {
+  if (lower.includes('oasa_logo') || lower.includes('sea_logo') || lower.includes('/logo') || lower.includes('favicon')) {
     return true;
   }
 
@@ -924,7 +934,7 @@ const isLowQualityOasaImageUrl = (imageUrl?: string): boolean => {
 const extractImageUrlFromElement = (
   $: cheerio.CheerioAPI,
   element: any,
-  baseUrl = OASA_EVENTS_URL
+  baseUrl = SEA_EVENTS_URL
 ): string | undefined => {
   const imageCandidates: string[] = [];
   const selectors = [
@@ -969,7 +979,7 @@ const extractImageUrlFromElement = (
 
   for (const candidate of imageCandidates) {
     const resolved = resolveAbsoluteUrl(candidate, baseUrl);
-    if (resolved && isLikelyOasaEventImageUrl(resolved)) {
+    if (resolved && isLikelySeaEventImageUrl(resolved)) {
       return resolved;
     }
   }
@@ -999,7 +1009,7 @@ const fetchEventDetailImageUrl = async (
 
     for (const candidate of metaCandidates) {
       const resolved = resolveAbsoluteUrl(candidate, eventUrl);
-      if (resolved && isLikelyOasaEventImageUrl(resolved)) {
+      if (resolved && isLikelySeaEventImageUrl(resolved)) {
         return resolved;
       }
     }
@@ -1017,7 +1027,7 @@ const fetchEventDetailImageUrl = async (
       })
       .map((value) => resolveAbsoluteUrl(value, eventUrl))
       .filter((value): value is string => Boolean(value))
-      .filter((value) => isLikelyOasaEventImageUrl(value));
+      .filter((value) => isLikelySeaEventImageUrl(value));
 
     const ranked = allDetailImages.sort((a, b) => {
       const aw = extractWixWidth(a) || 0;
@@ -1075,7 +1085,7 @@ const getDateKeyInTimeZone = (value: Date | string | number, timeZone: string = 
   return `${year}-${month}-${day}`;
 };
 
-const isCurrentOrUpcomingOasaEvent = (pubDate?: Date): boolean => {
+const isCurrentOrUpcomingSeaEvent = (pubDate?: Date): boolean => {
   if (!pubDate) {
     return true;
   }
@@ -1089,16 +1099,16 @@ const isCurrentOrUpcomingOasaEvent = (pubDate?: Date): boolean => {
   return eventDateKey >= todayDateKey;
 };
 
-const isGenericOasaTitle = (title: string): boolean => OASA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
+const isGenericSeaTitle = (title: string): boolean => SEA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
 
-const fetchOasaEvents = async (): Promise<number> => {
+const fetchSeaEvents = async (): Promise<number> => {
   let articlesAdded = 0;
 
   try {
     const fetch = (await import('node-fetch')).default;
-    const response = await fetch(OASA_EVENTS_URL);
+    const response = await fetch(SEA_EVENTS_URL);
     if (!response.ok) {
-      console.error(`Error fetching OASA events (${response.status}): ${response.statusText}`);
+      console.error(`Error fetching SEA events (${response.status}): ${response.statusText}`);
       return 0;
     }
 
@@ -1119,7 +1129,7 @@ const fetchOasaEvents = async (): Promise<number> => {
         return;
       }
 
-      const link = resolveAbsoluteUrl(href, OASA_EVENTS_URL);
+      const link = resolveAbsoluteUrl(href, SEA_EVENTS_URL);
       if (!link) {
         return;
       }
@@ -1132,12 +1142,12 @@ const fetchOasaEvents = async (): Promise<number> => {
         || normalizeText(titleAnchor.attr('aria-label') || '')
         || normalizeText(titleAnchor.attr('title') || '');
 
-      if (!titleText || isGenericOasaTitle(titleText)) {
+      if (!titleText || isGenericSeaTitle(titleText)) {
         return;
       }
 
       const normalizedTitle = titleText.toLowerCase();
-      if (OASA_EVENTS_TITLE_EXCLUSIONS.some((keyword) => normalizedTitle.includes(keyword))) {
+      if (SEA_EVENTS_TITLE_EXCLUSIONS.some((keyword) => normalizedTitle.includes(keyword))) {
         return;
       }
 
@@ -1147,27 +1157,27 @@ const fetchOasaEvents = async (): Promise<number> => {
 
       const containerText = normalizeText(card.text());
       const pubDate = extractEventDate(containerText);
-      if (!isCurrentOrUpcomingOasaEvent(pubDate)) {
+      if (!isCurrentOrUpcomingSeaEvent(pubDate)) {
         return;
       }
 
       const descriptionContainer = card.find('.PLst2a').first().clone();
       descriptionContainer.find('a, button, [role="button"]').remove();
 
-      let description = stripOasaDescriptionCtas(normalizeText(descriptionContainer.text()));
+      let description = stripSeaDescriptionCtas(normalizeText(descriptionContainer.text()));
       if (!description) {
         const cardBody = card.clone();
         cardBody.find('a[data-hook="title"], a, button, [role="button"], img').remove();
-        description = stripOasaDescriptionCtas(
+        description = stripSeaDescriptionCtas(
           normalizeText(cardBody.text().replace(titleText, '').trim())
         );
       }
       if (description.length < 20) {
-        description = 'OASA event details and schedule are available on the event page.';
+        description = 'SEA event details and schedule are available on the event page.';
       }
       description = trimTextForEmail(description, 1200);
 
-      const resolvedImageUrl = extractImageUrlFromElement($, element, OASA_EVENTS_URL);
+      const resolvedImageUrl = extractImageUrlFromElement($, element, SEA_EVENTS_URL);
 
       eventLinks.set(link, {
         title: titleText,
@@ -1178,7 +1188,7 @@ const fetchOasaEvents = async (): Promise<number> => {
     });
 
     if (eventLinks.size === 0) {
-      console.log('No OASA events found on the events page.');
+      console.log('No SEA events found on the events page.');
       return 0;
     }
 
@@ -1208,7 +1218,7 @@ const fetchOasaEvents = async (): Promise<number> => {
 
         const shouldReplaceExistingImage =
           isGeneratedOrNonRenderableImageUrl(existingArticle.imageUrl || undefined)
-          || isLowQualityOasaImageUrl(existingArticle.imageUrl || undefined);
+          || isLowQualitySeaImageUrl(existingArticle.imageUrl || undefined);
 
         const resolvedImageUrl = resolveArticleImageUrl(event.title, eventImageUrl);
         if (resolvedImageUrl && (shouldReplaceExistingImage || existingArticle.imageUrl !== resolvedImageUrl)) {
@@ -1217,9 +1227,9 @@ const fetchOasaEvents = async (): Promise<number> => {
         }
 
         const nextPriority = calculateArticlePriority(event.title, event.description, {
-          source: OASA_EVENTS_SOURCE,
-          category: OASA_EVENTS_CATEGORY,
-          region: OASA_EVENTS_REGION,
+          source: SEA_EVENTS_SOURCE,
+          category: SEA_EVENTS_CATEGORY,
+          region: SEA_EVENTS_REGION,
           link
         });
         if (existingArticle.priority !== nextPriority) {
@@ -1238,17 +1248,17 @@ const fetchOasaEvents = async (): Promise<number> => {
         description: event.description,
         link,
         pubDate: event.pubDate || new Date(),
-        source: OASA_EVENTS_SOURCE,
-        category: OASA_EVENTS_CATEGORY,
+        source: SEA_EVENTS_SOURCE,
+        category: SEA_EVENTS_CATEGORY,
         imageUrl: resolveArticleImageUrl(event.title, eventImageUrl),
         isFeatured: false,
         priority: calculateArticlePriority(event.title, event.description, {
-          source: OASA_EVENTS_SOURCE,
-          category: OASA_EVENTS_CATEGORY,
-          region: OASA_EVENTS_REGION,
+          source: SEA_EVENTS_SOURCE,
+          category: SEA_EVENTS_CATEGORY,
+          region: SEA_EVENTS_REGION,
           link
         }),
-        region: OASA_EVENTS_REGION,
+        region: SEA_EVENTS_REGION,
         titleHash: computeTitleHash(event.title)
       });
 
@@ -1260,7 +1270,7 @@ const fetchOasaEvents = async (): Promise<number> => {
 
     const activeLinks = [...eventLinks.keys()];
     const staleWhere: any = {
-      source: OASA_EVENTS_SOURCE,
+      source: SEA_EVENTS_SOURCE,
       pubDate: { [Op.gte]: staleThreshold }
     };
 
@@ -1270,10 +1280,10 @@ const fetchOasaEvents = async (): Promise<number> => {
 
     const staleRemoved = await Article.destroy({ where: staleWhere });
     if (staleRemoved > 0) {
-      console.log(`Removed ${staleRemoved} stale OASA event article(s) no longer on the live events page.`);
+      console.log(`Removed ${staleRemoved} stale SEA event article(s) no longer on the live events page.`);
     }
   } catch (error) {
-    console.error('Error fetching OASA events:', error);
+    console.error('Error fetching SEA events:', error);
   }
 
   return articlesAdded;
@@ -1554,11 +1564,11 @@ export const aggregateNews = async (): Promise<number> => {
     }
   }
 
-  const oasaEventsAdded = await fetchOasaEvents();
-  if (oasaEventsAdded > 0) {
-    console.log(`✓ Processed ${oasaEventsAdded} new articles from ${OASA_EVENTS_SOURCE}`);
+  const seaEventsAdded = await fetchSeaEvents();
+  if (seaEventsAdded > 0) {
+    console.log(`✓ Processed ${seaEventsAdded} new articles from ${SEA_EVENTS_SOURCE}`);
   }
-  articlesAdded += oasaEventsAdded;
+  articlesAdded += seaEventsAdded;
 
   // HK government sites: InvestHK + OASES (China space-related company news)
   const investhkAdded = await fetchInvestHKNews();

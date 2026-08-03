@@ -11,6 +11,10 @@ import { Op, QueryTypes, WhereOptions } from 'sequelize';
 import crypto from 'crypto';
 import NewsSource from '../models/NewsSource';
 import adminChangelogConfig from '../config/adminChangelog.json';
+import {
+  getNewsletterPrioritySettings,
+  saveNewsletterPrioritySettings
+} from '../config/newsletterPrioritySettings';
 import { passesNewsletterContentFilter } from '../utils/newsletterContentFilter';
 
 const sourceTestParser = new Parser();
@@ -123,13 +127,21 @@ const buildPreferenceWhere = (subscriber: Subscriber): Record<string, unknown> =
   return whereClause;
 };
 
-const OASA_EVENTS_SOURCE = 'OASA Events';
+const SEA_EVENTS_SOURCE = 'SEA Events';
+const LEGACY_OASA_EVENTS_SOURCE = 'OASA Events';
+const SEA_EVENT_SOURCE_ALIASES = new Set([SEA_EVENTS_SOURCE, LEGACY_OASA_EVENTS_SOURCE]);
 const DEFAULT_MAX_PER_SOURCE = 2;
 const NEWSLETTER_REPEAT_LIMIT = 3;
 const REPEAT_SUPPRESSION_FREQUENCIES = new Set(['daily', 'weekly']);
 const MAX_PER_SOURCE_OVERRIDES: Record<string, number> = {
-  // Allow all eligible OASA events to be selected when available.
-  [OASA_EVENTS_SOURCE]: 50
+  // Allow all eligible SEA events (including legacy OASA source labels) to be selected when available.
+  [SEA_EVENTS_SOURCE]: 50,
+  [LEGACY_OASA_EVENTS_SOURCE]: 50
+};
+
+const isSeaEventSource = (source: unknown): boolean => {
+  const normalized = String(source || '').trim();
+  return SEA_EVENT_SOURCE_ALIASES.has(normalized);
 };
 
 const getMaxPerSource = (source: string): number => {
@@ -195,7 +207,7 @@ const getArticleTopicFingerprint = (article: Pick<Article, 'source' | 'titleHash
 };
 
 const filterRepeatedSpaceNewsArticles = async (articles: Article[]): Promise<Article[]> => {
-  const spaceNewsArticles = articles.filter((article) => !isOasaArticle(article));
+  const spaceNewsArticles = articles.filter((article) => !isSeaArticle(article));
   if (spaceNewsArticles.length === 0) {
     return articles;
   }
@@ -215,7 +227,7 @@ const filterRepeatedSpaceNewsArticles = async (articles: Article[]): Promise<Art
   }
 
   return articles.filter((article) => {
-    if (isOasaArticle(article)) {
+    if (isSeaArticle(article)) {
       return true;
     }
     return !blockedFingerprints.has(getArticleTopicFingerprint(article));
@@ -223,27 +235,30 @@ const filterRepeatedSpaceNewsArticles = async (articles: Article[]): Promise<Art
 };
 
 const orderArticlesForNewsletterSections = (articles: Article[]): Article[] => {
-  const oasaArticles = articles
-    .filter((article) => String(article.source || '').trim() === OASA_EVENTS_SOURCE)
+  const seaArticles = articles
+    .filter((article) => isSeaEventSource(article.source))
     .sort((a, b) => getPubDateTimestamp(b) - getPubDateTimestamp(a));
 
   const sourceArticles = articles
-    .filter((article) => String(article.source || '').trim() !== OASA_EVENTS_SOURCE)
+    .filter((article) => !isSeaEventSource(article.source))
     .sort((a, b) => getPubDateTimestamp(b) - getPubDateTimestamp(a));
 
-  return [...sourceArticles, ...oasaArticles];
+  return [...sourceArticles, ...seaArticles];
 };
 
-type SessionBucket = 'oasa' | 'hong-kong' | 'china' | 'world';
+type SessionBucket = 'sea' | 'hong-kong' | 'china' | 'world';
 
-const NEWSLETTER_SESSION_PLAN: Array<{ bucket: SessionBucket; count: number }> = [
-  { bucket: 'oasa', count: 2 },
-  { bucket: 'hong-kong', count: 4 },
-  { bucket: 'china', count: 2 },
-  { bucket: 'world', count: 2 }
-];
+type SessionStep = { bucket: SessionBucket; count: number };
 
-const NEWSLETTER_TARGET_ARTICLE_COUNT = NEWSLETTER_SESSION_PLAN.reduce((sum, step) => sum + step.count, 0);
+const getNewsletterSessionPlan = (): SessionStep[] => {
+  const settings = getNewsletterPrioritySettings();
+  return [
+    { bucket: 'sea', count: settings.sessionPlan.sea },
+    { bucket: 'hong-kong', count: settings.sessionPlan.hongKong },
+    { bucket: 'china', count: settings.sessionPlan.china },
+    { bucket: 'world', count: settings.sessionPlan.world }
+  ];
+};
 
 const normalizeArticleText = (value: unknown): string => String(value || '').toLowerCase();
 
@@ -268,12 +283,12 @@ const includesAnyKeyword = (value: string, keywords: string[]): boolean => {
   return keywords.some((keyword) => value.includes(keyword));
 };
 
-const isOasaArticle = (article: Article): boolean => {
+const isSeaArticle = (article: Article): boolean => {
   const source = normalizeArticleText(article.source);
   const categories = Array.isArray(article.category) ? article.category.map((entry) => normalizeArticleText(entry)) : [];
   const link = normalizeArticleText(article.link);
 
-  return source.includes('oasa') || categories.includes('oasa') || link.includes('oasahk.org/event');
+  return source.includes('sea') || source.includes('oasa') || categories.includes('sea') || categories.includes('oasa') || link.includes('oasahk.org/event') || link.includes('seahk.org/event');
 };
 
 const isHongKongArticle = (article: Article): boolean => {
@@ -311,8 +326,8 @@ const isChinaArticle = (article: Article): boolean => {
 };
 
 const getSessionBucket = (article: Article): SessionBucket => {
-  if (isOasaArticle(article)) {
-    return 'oasa';
+  if (isSeaArticle(article)) {
+    return 'sea';
   }
 
   if (isHongKongArticle(article)) {
@@ -331,7 +346,7 @@ const isEligibleNewsletterArticle = (article: Article): boolean => {
     return false;
   }
 
-  if (!isOasaArticle(article)) {
+  if (!isSeaArticle(article)) {
     return passesNewsletterContentFilter(
       String(article.title || ''),
       String(article.description || ''),
@@ -355,9 +370,11 @@ const isEligibleNewsletterArticle = (article: Article): boolean => {
 };
 
 const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<string> = new Set()): Article[] => {
-  const baseOasaPlanCount = NEWSLETTER_SESSION_PLAN.find((step) => step.bucket === 'oasa')?.count || 0;
-  const eligibleOasaCount = candidates.filter((article) => {
-    if (getSessionBucket(article) !== 'oasa') {
+  const sessionPlan = getNewsletterSessionPlan();
+  const targetArticleCount = sessionPlan.reduce((sum, step) => sum + step.count, 0);
+  const baseSeaPlanCount = sessionPlan.find((step) => step.bucket === 'sea')?.count || 0;
+  const eligibleSeaCount = candidates.filter((article) => {
+    if (getSessionBucket(article) !== 'sea') {
       return false;
     }
 
@@ -372,16 +389,16 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
     return true;
   }).length;
 
-  const effectiveTargetCount = NEWSLETTER_TARGET_ARTICLE_COUNT + Math.max(0, eligibleOasaCount - baseOasaPlanCount);
+  const effectiveTargetCount = targetArticleCount + Math.max(0, eligibleSeaCount - baseSeaPlanCount);
 
   const selected: Article[] = [];
   const selectedIds = new Set<number>();
   const selectedBySource = new Map<string, number>();
   const selectedTitleHashes = new Set<string>();
   const bucketLimits = new Map<SessionBucket, number>(
-    NEWSLETTER_SESSION_PLAN.map((step) => [step.bucket, step.count])
+    sessionPlan.map((step) => [step.bucket, step.count])
   );
-  bucketLimits.set('oasa', Math.max(bucketLimits.get('oasa') || 0, eligibleOasaCount));
+  bucketLimits.set('sea', Math.max(bucketLimits.get('sea') || 0, eligibleSeaCount));
   const selectedByBucket = new Map<SessionBucket, number>();
 
   const tryTakeArticle = (article: Article): boolean => {
@@ -425,14 +442,14 @@ const selectArticlesBySessionPlan = (candidates: Article[], excludedHashes: Set<
     return true;
   };
 
-  for (const step of NEWSLETTER_SESSION_PLAN) {
-    let needed = step.bucket === 'oasa'
-      ? eligibleOasaCount
+  for (const step of sessionPlan) {
+    let needed = step.bucket === 'sea'
+      ? eligibleSeaCount
       : step.count;
 
-    const prioritizedCandidates = step.bucket === 'oasa'
+    const prioritizedCandidates = step.bucket === 'sea'
       ? candidates
-        .filter((article) => getSessionBucket(article) === 'oasa')
+        .filter((article) => getSessionBucket(article) === 'sea')
         .sort((a, b) => getPubDateTimestamp(a) - getPubDateTimestamp(b))
       : candidates;
 
@@ -528,7 +545,7 @@ const getRecentlySentHashes = async (frequency: 'daily' | 'weekly' | 'monthly'):
     where: {
       lastSentAt: { [Op.gte]: since },
       titleHash: { [Op.ne]: null },
-      source: { [Op.ne]: OASA_EVENTS_SOURCE }
+      source: { [Op.notIn]: Array.from(SEA_EVENT_SOURCE_ALIASES) }
     } as WhereOptions,
     attributes: ['titleHash']
   });
@@ -1394,6 +1411,36 @@ export const getAdminChangelog = async (req: Request, res: Response): Promise<vo
   } catch (error) {
     console.error('Get admin changelog error:', error);
     res.status(500).json({ error: 'Failed to fetch admin changelog' });
+  }
+};
+
+export const getNewsletterPrioritySettingsAdmin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    res.status(200).json({ settings: getNewsletterPrioritySettings() });
+  } catch (error) {
+    console.error('Get newsletter priority settings error:', error);
+    res.status(500).json({ error: 'Failed to fetch newsletter priority settings' });
+  }
+};
+
+export const updateNewsletterPrioritySettingsAdmin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const settings = saveNewsletterPrioritySettings(req.body || {});
+    res.status(200).json({
+      message: 'Newsletter priority settings updated',
+      settings
+    });
+  } catch (error) {
+    console.error('Update newsletter priority settings error:', error);
+    res.status(500).json({ error: 'Failed to update newsletter priority settings' });
   }
 };
 

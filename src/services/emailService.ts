@@ -35,7 +35,14 @@ const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCas
 const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
 const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
 const imageCachePlaceholderTtlHours = Number(process.env.IMAGE_CACHE_PLACEHOLDER_TTL_HOURS || 6);
-const OASA_EVENTS_SOURCE = 'OASA Events';
+const SEA_EVENTS_SOURCE = 'SEA Events';
+const LEGACY_OASA_EVENTS_SOURCE = 'OASA Events';
+const SEA_EVENT_SOURCE_ALIASES = new Set([SEA_EVENTS_SOURCE, LEGACY_OASA_EVENTS_SOURCE]);
+
+const isSeaEventSource = (source: unknown): boolean => {
+  const normalized = String(source || '').trim();
+  return SEA_EVENT_SOURCE_ALIASES.has(normalized);
+};
 const aiImageProvider = (process.env.AI_IMAGE_PROVIDER || 'pollinations').toLowerCase();
 const openAiApiKey = process.env.OPENAI_API_KEY || '';
 const openAiImageModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
@@ -827,7 +834,7 @@ export const sendNewsletterEmail = async (
   const unsubscribeUrl = `${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
   const preferencesUrl = `${appUrl}/api/subscriptions/preferences/${preferencesToken}`;
   const forwardUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Thought you might like this issue of the SEA NewSpace Summary.\n\nVisit ${siteUrl} to explore more and subscribe.`)}`;
-  const logoCid = 'oasa-header-logo';
+  const logoCid = 'sea-header-logo';
   const logoBase64 = loadLogoBase64();
 
   const articleWithImageCids: Array<{ article: any; cid?: string; attachment?: EmailAttachment; hasImage: boolean }> = [];
@@ -868,7 +875,7 @@ export const sendNewsletterEmail = async (
 
   const attachments: EmailAttachment[] = [
     {
-      name: 'oasa-banner.png',
+      name: 'sea-banner-copy.png',
       contentType: 'image/png',
       contentInBase64: logoBase64,
       contentId: logoCid
@@ -878,7 +885,7 @@ export const sendNewsletterEmail = async (
       .filter((attachment): attachment is EmailAttachment => Boolean(attachment))
   ];
 
-  const isExcludedOasaArticle = (article: any): boolean => {
+  const isExcludedSeaArticle = (article: any): boolean => {
     const searchableText = [article?.title, article?.description, article?.link]
       .filter((value): value is string => typeof value === 'string')
       .join(' ')
@@ -887,9 +894,9 @@ export const sendNewsletterEmail = async (
     return /bootcamp/i.test(searchableText);
   };
 
-  const oasaArticles = articleWithImageCids.filter(({ article }) => {
-    const isOasaEvent = String(article?.source || '').trim() === OASA_EVENTS_SOURCE;
-    return isOasaEvent && !isExcludedOasaArticle(article);
+  const seaArticles = articleWithImageCids.filter(({ article }) => {
+    const isSeaEvent = isSeaEventSource(article?.source);
+    return isSeaEvent && !isExcludedSeaArticle(article);
   });
   const getPublishedTimestamp = (value: unknown): number => {
     const parsed = new Date(String(value || ''));
@@ -898,10 +905,10 @@ export const sendNewsletterEmail = async (
   };
 
   const sourceArticles = articleWithImageCids
-    .filter(({ article }) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE)
+    .filter(({ article }) => !isSeaEventSource(article?.source))
     .sort((a, b) => getPublishedTimestamp(b.article?.pubDate) - getPublishedTimestamp(a.article?.pubDate));
 
-  const normalizeOasaDescription = (value: unknown): string => {
+  const normalizeSeaDescription = (value: unknown): string => {
     const raw = String(value || '').trim();
     return raw
       .replace(/^\s*summary\s*:\s*/i, '')
@@ -911,9 +918,9 @@ export const sendNewsletterEmail = async (
       .trim();
   };
 
-  const renderInlineArticleBlocks = (items: Array<{ article: any; cid?: string; hasImage: boolean }>, options?: { preserveOasaText?: boolean }): string => items.map(({ article, cid, hasImage }) => {
-    const description = options?.preserveOasaText && String(article?.source || '').trim() === OASA_EVENTS_SOURCE
-      ? normalizeOasaDescription(article.description)
+  const renderInlineArticleBlocks = (items: Array<{ article: any; cid?: string; hasImage: boolean }>, options?: { preserveSeaText?: boolean }): string => items.map(({ article, cid, hasImage }) => {
+    const description = options?.preserveSeaText && isSeaEventSource(article?.source)
+      ? normalizeSeaDescription(article.description)
       : article.description;
     const titleClass = hasImage ? 'article-title-box' : 'article-title-box text-only';
     return `
@@ -927,9 +934,9 @@ export const sendNewsletterEmail = async (
         `;
   }).join('');
 
-  const renderExternalArticleBlocks = (items: any[], options?: { preserveOasaText?: boolean }): string => items.map((article) => {
-    const description = options?.preserveOasaText && String(article?.source || '').trim() === OASA_EVENTS_SOURCE
-      ? normalizeOasaDescription(article.description)
+  const renderExternalArticleBlocks = (items: any[], options?: { preserveSeaText?: boolean }): string => items.map((article) => {
+    const description = options?.preserveSeaText && isSeaEventSource(article?.source)
+      ? normalizeSeaDescription(article.description)
       : article.description;
     const hasExternalImage = isRenderableSourceImageUrl(article?.imageUrl);
     const titleClass = hasExternalImage ? 'article-title-box' : 'article-title-box text-only';
@@ -946,14 +953,14 @@ export const sendNewsletterEmail = async (
         `;
   }).join('');
 
-  const renderSections = (oasaMarkup: string, sourcesMarkup: string): string => `
+  const renderSections = (seaMarkup: string, sourcesMarkup: string): string => `
         <div class="section">
           <h2>Space News</h2>
           ${sourcesMarkup || '<p>No additional source updates available for this issue.</p>'}
         </div>
         <div class="section">
-          <h2>Updates from OASA</h2>
-          ${oasaMarkup || '<p>No OASA event updates available for this issue.</p>'}
+          <h2>Updates from SEA</h2>
+          ${seaMarkup || '<p>No SEA event updates available for this issue.</p>'}
         </div>
       `;
 
@@ -1019,7 +1026,7 @@ export const sendNewsletterEmail = async (
     const logoUrl = `${siteUrl}/SEA%20Banner%20Copy.png`;
     const externalOnlyHtml = renderNewsletterHtmlWithLogo(
       renderSections(
-        renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
+        renderExternalArticleBlocks(seaArticles.map(({ article }) => article), { preserveSeaText: true }),
         renderExternalArticleBlocks(sourceArticles.map(({ article }) => article))
       ),
       logoUrl
@@ -1035,7 +1042,7 @@ export const sendNewsletterEmail = async (
 
   const htmlContent = renderNewsletterHtmlWithLogo(
     renderSections(
-      renderInlineArticleBlocks(oasaArticles, { preserveOasaText: true }),
+      renderInlineArticleBlocks(seaArticles, { preserveSeaText: true }),
       renderInlineArticleBlocks(sourceArticles)
     ),
     `cid:${logoCid}`
@@ -1071,19 +1078,19 @@ export const sendNewsletterEmail = async (
   if (sentWithInlineImages) return true;
 
   // If inline/cached attachments fail provider validation, retry with external image URLs.
-  console.warn(`Retrying newsletter send to ${email} with reduced inline attachments (OASA only)`);
+  console.warn(`Retrying newsletter send to ${email} with reduced inline attachments (SEA only)`);
 
-  const oasaInlineAttachments: EmailAttachment[] = articleWithImageCids
-    .filter((item) => String(item.article?.source || '').trim() === OASA_EVENTS_SOURCE)
+  const seaInlineAttachments: EmailAttachment[] = articleWithImageCids
+    .filter((item) => isSeaEventSource(item.article?.source))
     .map((item) => item.attachment)
     .filter((attachment): attachment is EmailAttachment => Boolean(attachment));
 
   const fallbackHtmlContent = renderNewsletterHtmlWithLogo(
     renderSections(
-      renderInlineArticleBlocks(oasaArticles, { preserveOasaText: true }),
+      renderInlineArticleBlocks(seaArticles, { preserveSeaText: true }),
       renderExternalArticleBlocks(
         articles
-          .filter((article) => String(article?.source || '').trim() !== OASA_EVENTS_SOURCE)
+          .filter((article) => !isSeaEventSource(article?.source))
           .sort((a, b) => getPublishedTimestamp(b?.pubDate) - getPublishedTimestamp(a?.pubDate))
       )
     ),
@@ -1091,15 +1098,15 @@ export const sendNewsletterEmail = async (
   );
   const minimalAttachments: EmailAttachment[] = [
     {
-      name: 'oasa-banner.png',
+      name: 'sea-banner-copy.png',
       contentType: 'image/png',
       contentInBase64: logoBase64,
       contentId: logoCid
     },
-    ...oasaInlineAttachments
+    ...seaInlineAttachments
   ];
 
-  const sentWithReducedInline = await tryNewsletterVariant('oasa-inline-only', fallbackHtmlContent, minimalAttachments);
+  const sentWithReducedInline = await tryNewsletterVariant('sea-inline-only', fallbackHtmlContent, minimalAttachments);
   if (sentWithReducedInline) return true;
 
   // Final resilience path: no inline article images.
@@ -1107,7 +1114,7 @@ export const sendNewsletterEmail = async (
 
   const fullyExternalHtmlWithCidLogo = renderNewsletterHtmlWithLogo(
     renderSections(
-      renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
+      renderExternalArticleBlocks(seaArticles.map(({ article }) => article), { preserveSeaText: true }),
       renderExternalArticleBlocks(sourceArticles.map(({ article }) => article))
     ),
     `cid:${logoCid}`
@@ -1115,7 +1122,7 @@ export const sendNewsletterEmail = async (
 
   const sentWithLogoOnly = await tryNewsletterVariant('external-images-logo-inline', fullyExternalHtmlWithCidLogo, [
     {
-      name: 'oasa-banner.png',
+      name: 'sea-banner-copy.png',
       contentType: 'image/png',
       contentInBase64: logoBase64,
       contentId: logoCid
@@ -1128,7 +1135,7 @@ export const sendNewsletterEmail = async (
   const logoUrl = `${appUrl.replace(/\/$/, '')}/SEA%20Banner%20Copy.png`;
   const fullyExternalHtmlNoAttachments = renderNewsletterHtmlWithLogo(
     renderSections(
-      renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
+      renderExternalArticleBlocks(seaArticles.map(({ article }) => article), { preserveSeaText: true }),
       renderExternalArticleBlocks(sourceArticles.map(({ article }) => article))
     ),
     logoUrl

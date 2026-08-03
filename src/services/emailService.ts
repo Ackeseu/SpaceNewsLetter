@@ -444,7 +444,7 @@ const getContentTypeExtension = (contentType: string): string => {
 };
 
 const loadLogoBase64 = (): string => {
-  const logoPath = path.resolve(__dirname, '../../public/oasa-banner.png');
+  const logoPath = path.resolve(__dirname, '../../public/SEA Banner Copy.png');
   if (!fs.existsSync(logoPath)) {
     return TRANSPARENT_PIXEL_BASE64;
   }
@@ -823,10 +823,10 @@ export const sendNewsletterEmail = async (
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const siteUrl = appUrl.replace(/\/$/, '');
   const issueDateLabel = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const subject = `OASA NewSpace Newsletter${editionLabel ? ` - ${editionLabel}` : ''} - ${issueDateLabel}`;
+  const subject = `SEA NewSpace Summary${editionLabel ? ` - ${editionLabel}` : ''} - ${issueDateLabel}`;
   const unsubscribeUrl = `${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}`;
   const preferencesUrl = `${appUrl}/api/subscriptions/preferences/${preferencesToken}`;
-  const forwardUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Thought you might like this issue of the OASA NewSpace Newsletter.\n\nVisit ${siteUrl} to explore more and subscribe.`)}`;
+  const forwardUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Thought you might like this issue of the SEA NewSpace Summary.\n\nVisit ${siteUrl} to explore more and subscribe.`)}`;
   const logoCid = 'oasa-header-logo';
   const logoBase64 = loadLogoBase64();
 
@@ -990,9 +990,9 @@ export const sendNewsletterEmail = async (
     <body>
       <div class="container">
         <div class="header" style="background-color:#ffffff;color:#111827;padding:24px 20px;text-align:center;border-bottom:1px solid #e5e7eb;">
-          <img src="{{LOGO_SRC}}" alt="OASA NewSpace Newsletter" class="header-logo">
+          <img src="{{LOGO_SRC}}" alt="SEA NewSpace Summary" class="header-logo">
           <div class="front-disclaimer">This AI summary service has been provided exclusively to members of SEA, strictly for educational purposes, and not for redistribution, reference, or referral.</div>
-          <h1>OASA NewSpace Newsletter</h1>
+          <h1>SEA NewSpace Summary</h1>
         </div>
         
         ${sectionMarkup}
@@ -1016,7 +1016,7 @@ export const sendNewsletterEmail = async (
   };
 
   if (forceExternalImagesOnly) {
-    const logoUrl = `${siteUrl}/oasa-banner.png`;
+    const logoUrl = `${siteUrl}/SEA%20Banner%20Copy.png`;
     const externalOnlyHtml = renderNewsletterHtmlWithLogo(
       renderSections(
         renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),
@@ -1125,7 +1125,7 @@ export const sendNewsletterEmail = async (
 
   console.warn(`Retrying newsletter send to ${email} with zero attachments`);
 
-  const logoUrl = `${appUrl.replace(/\/$/, '')}/oasa-banner.png`;
+  const logoUrl = `${appUrl.replace(/\/$/, '')}/SEA%20Banner%20Copy.png`;
   const fullyExternalHtmlNoAttachments = renderNewsletterHtmlWithLogo(
     renderSections(
       renderExternalArticleBlocks(oasaArticles.map(({ article }) => article), { preserveOasaText: true }),

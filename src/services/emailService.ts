@@ -31,7 +31,6 @@ type EmailClientLike = {
 
 const connectionString = process.env.AZURE_COMMUNICATION_CONNECTION_STRING || '';
 const senderEmail = process.env.SENDER_EMAIL || '';
-const senderName = String(process.env.SENDER_NAME || '').replace(/[\r\n<>]/g, '').trim();
 const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
 const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
 const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
@@ -675,10 +674,8 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
 
   clearEmailSendError(options.to);
 
-  const senderAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
-
   const message: EmailMessage = {
-    senderAddress,
+    senderAddress: senderEmail,
     content: {
       subject: options.subject,
       html: options.htmlContent

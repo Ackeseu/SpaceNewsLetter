@@ -92,7 +92,6 @@ DB_SSL=true
 # Azure Communication Services
 AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://...
 SENDER_EMAIL=donotreply@your-domain.com
-SENDER_NAME=SEA NewSpace Summary
 
 # Optional: title image generation
 # Set false to suspend generated title imagery in newsletters
@@ -133,7 +132,7 @@ MONITOR_MAX_STALE_MINUTES=2880
 NEWS_API_KEY=your-newsapi-key
 ```
 
-`SENDER_NAME` is optional and controls the inbox display name while `SENDER_EMAIL` remains the linked ACS sender address.
+Use a linked sender address in `SENDER_EMAIL` only. Avoid display-name formatting like `Name <email>` in the configured sender value, because ACS request validation can reject it depending on sender policy.
 
 ### 3. Set Up Azure Resources
 

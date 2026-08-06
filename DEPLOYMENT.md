@@ -33,7 +33,7 @@ Set in Azure App Service (`newspace-newsletter-api`):
 - `PORT=8080`
 - DB settings (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL`)
 - Email settings (`AZURE_COMMUNICATION_CONNECTION_STRING`, `SENDER_EMAIL`)
-- Optional inbox display name: `SENDER_NAME` (for example `SEA NewSpace Summary`)
+- Keep `SENDER_EMAIL` as a linked raw sender address (no display-name wrapper formatting).
 - Optional email recovery setting:
   - `EMAIL_FORCE_EXTERNAL_IMAGES=true` (skip inline attachments and send external-image newsletters only when ACS payload limits are still blocking delivery)
 - App URL (`APP_URL`)

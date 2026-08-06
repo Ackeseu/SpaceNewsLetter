@@ -31,6 +31,7 @@ type EmailClientLike = {
 
 const connectionString = process.env.AZURE_COMMUNICATION_CONNECTION_STRING || '';
 const senderEmail = process.env.SENDER_EMAIL || '';
+const senderName = String(process.env.SENDER_NAME || '').replace(/[\r\n<>]/g, '').trim();
 const imageCacheEnabled = (process.env.IMAGE_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
 const imageCacheDir = process.env.IMAGE_CACHE_DIR || '/home/data/title-image-cache';
 const imageCacheTtlHours = Number(process.env.IMAGE_CACHE_TTL_HOURS || 24 * 14);
@@ -674,8 +675,10 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
 
   clearEmailSendError(options.to);
 
+  const senderAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
+
   const message: EmailMessage = {
-    senderAddress: senderEmail,
+    senderAddress,
     content: {
       subject: options.subject,
       html: options.htmlContent
@@ -793,8 +796,8 @@ export const sendVerificationEmail = async (email: string, token: string): Promi
     </head>
     <body>
       <div class="container">
-        <h2>Welcome to NewSpace Newsletter!</h2>
-        <p>Thank you for subscribing to our newsletter about the latest in space exploration and the low-altitude economy.</p>
+        <h2>Welcome to SEA NewSpace Summary!</h2>
+        <p>Thank you for subscribing to SEA NewSpace Summary for the latest in space exploration and the low-altitude economy.</p>
         <p>Please verify your email address by clicking the button below:</p>
         <p><a href="${verificationUrl}" class="button">Verify Email Address</a></p>
         <p>Or copy this link: ${verificationUrl}</p>
@@ -808,7 +811,7 @@ export const sendVerificationEmail = async (email: string, token: string): Promi
 
   return await sendEmail({
     to: email,
-    subject: 'Verify your NewSpace Newsletter subscription',
+    subject: 'Verify your SEA NewSpace Summary subscription',
     htmlContent
   });
 };
@@ -1005,7 +1008,7 @@ export const sendNewsletterEmail = async (
         ${sectionMarkup}
         
         <div class="footer">
-          <p>You're receiving this email because you subscribed to NewSpace Newsletter.</p>
+          <p>You're receiving this email because you subscribed to SEA NewSpace Summary.</p>
           <div class="footer-actions">
             <a href="${forwardUrl}" class="footer-action-link">Forward to a friend</a>
             <a href="${siteUrl}" class="footer-action-link">Visit our website</a>

@@ -1101,6 +1101,22 @@ const isCurrentOrUpcomingSeaEvent = (pubDate?: Date): boolean => {
 
 const isGenericSeaTitle = (title: string): boolean => SEA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
 
+export const getCuratedSeaEventEntries = (): Array<{
+  title: string;
+  description: string;
+  link: string;
+  imageUrl?: string;
+  pubDate?: Date;
+}> => [
+  {
+    title: 'SpaceBiz Dialogues (August 2026) - Climate Intelligence: One of HK’s First Real Entry Points into the NewSpace Economy',
+    description: 'Join the SpaceBiz Dialogues discussion on climate intelligence and how Hong Kong can tap into the emerging NewSpace economy.',
+    link: 'https://www.oasahk.org/event-details/spacebiz-dialogues-august-2026-climate-intelligence-one-of-hks-first-real-entry-points-into-the-newspace-economy',
+    imageUrl: 'https://static.wixstatic.com/media/4abc53_7320abbfc4a740048a9e2bd27a917471~mv2.png/v1/fill/w_1920,h_1080,al_c/4abc53_7320abbfc4a740048a9e2bd27a917471~mv2.png',
+    pubDate: new Date('2026-08-20T00:00:00+08:00')
+  }
+];
+
 const fetchSeaEvents = async (): Promise<number> => {
   let articlesAdded = 0;
 
@@ -1120,6 +1136,19 @@ const fetchSeaEvents = async (): Promise<number> => {
       imageUrl?: string;
       pubDate?: Date;
     }>();
+
+    for (const curatedEvent of getCuratedSeaEventEntries()) {
+      if (!curatedEvent.link || eventLinks.has(curatedEvent.link)) {
+        continue;
+      }
+
+      eventLinks.set(curatedEvent.link, {
+        title: curatedEvent.title,
+        description: curatedEvent.description,
+        imageUrl: curatedEvent.imageUrl,
+        pubDate: curatedEvent.pubDate
+      });
+    }
 
     $('li[data-hook="events-card"]').each((_, element) => {
       const card = $(element);

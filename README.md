@@ -91,7 +91,7 @@ DB_SSL=true
 
 # Azure Communication Services
 AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://...
-SENDER_EMAIL=donotreply@your-domain.com
+SENDER_EMAIL=DoNotReply@seahk.org
 
 # Optional: title image generation
 # Set false to suspend generated title imagery in newsletters
@@ -132,7 +132,7 @@ MONITOR_MAX_STALE_MINUTES=2880
 NEWS_API_KEY=your-newsapi-key
 ```
 
-Use a linked sender address in `SENDER_EMAIL` only. Avoid display-name formatting like `Name <email>` in the configured sender value, because ACS request validation can reject it depending on sender policy.
+Use a linked sender address in `SENDER_EMAIL` only. Avoid display-name formatting like `Name <email>` in the configured sender value, because ACS request validation can reject it depending on sender policy. Production uses `DoNotReply@seahk.org`; the `seahk.org` domain must be verified for SPF and DKIM in Azure Email Communication Services and linked to the Azure Communication Services resource before it can send.
 
 ### 3. Set Up Azure Resources
 

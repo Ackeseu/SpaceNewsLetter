@@ -33,7 +33,9 @@ Set in Azure App Service (`newspace-newsletter-api`):
 - `PORT=8080`
 - DB settings (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL`)
 - Email settings (`AZURE_COMMUNICATION_CONNECTION_STRING`, `SENDER_EMAIL`)
+- Production sender: `SENDER_EMAIL=DoNotReply@seahk.org`.
 - Keep `SENDER_EMAIL` as a linked raw sender address (no display-name wrapper formatting).
+- In Azure Email Communication Services, authenticate `seahk.org` with its verification TXT, SPF, and two DKIM CNAME records, then link the custom domain to the Azure Communication Services resource used by `AZURE_COMMUNICATION_CONNECTION_STRING`. An authenticated but unlinked domain fails sends with `DomainNotLinked`.
 - Optional email recovery setting:
   - `EMAIL_FORCE_EXTERNAL_IMAGES=true` (skip inline attachments and send external-image newsletters only when ACS payload limits are still blocking delivery)
 - App URL (`APP_URL`)

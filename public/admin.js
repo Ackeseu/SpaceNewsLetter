@@ -1108,6 +1108,55 @@ function closeSourceTestModal() {
   }
 }
 
+const testNewsletterForm = document.getElementById('testNewsletterForm');
+if (testNewsletterForm) {
+  testNewsletterForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const emailInput = document.getElementById('testNewsletterEmail');
+    const confirmationInput = document.getElementById('testNewsletterConfirmation');
+    const submitButton = document.getElementById('sendTestNewsletterBtn');
+    const email = emailInput?.value.trim().toLowerCase();
+
+    if (!email || !confirmationInput?.checked) {
+      showMessage('dashMessage', 'Enter a verified subscriber email and confirm the test send', 'error');
+      return;
+    }
+
+    if (!confirm(`Send one test newsletter to ${email}?`)) {
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = 'Sending Test Newsletter...';
+
+    try {
+      const response = await fetch(`${API_URL}/api/newsletters/send-test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminToken
+        },
+        body: JSON.stringify({ email })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        showMessage('dashMessage', payload.error || 'Failed to send test newsletter', 'error');
+        return;
+      }
+
+      showMessage('dashMessage', `Test newsletter sent to ${payload.recipient || email}`, 'success');
+      testNewsletterForm.reset();
+    } catch (error) {
+      showMessage('dashMessage', 'Error sending test newsletter', 'error');
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Send Test Newsletter';
+    }
+  });
+}
+
 function logout() {
   localStorage.removeItem('adminToken');
   location.reload();

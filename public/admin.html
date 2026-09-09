@@ -991,6 +991,7 @@
         <button class="tab-btn" data-tab="preferences">Edit Preferences</button>
         <button class="tab-btn" data-tab="sources">Sources</button>
         <button class="tab-btn" data-tab="monitor">Monitoring</button>
+        <button class="tab-btn" data-tab="test">Send Test</button>
       </div>
 
       <!-- Subscribers Tab -->
@@ -1333,6 +1334,23 @@
           <div id="monitorDomainHealth">
             <div class="loading"><span class="spinner"></span>Loading domain health...</div>
           </div>
+        </div>
+      </div>
+
+      <div id="test" class="tab-content">
+        <div class="form-card">
+          <h2>Send Test Newsletter</h2>
+          <form id="testNewsletterForm">
+            <div class="form-group">
+              <label for="testNewsletterEmail">Verified Subscriber Email</label>
+              <input type="email" id="testNewsletterEmail" value="napolex@msn.com" required>
+            </div>
+            <div class="checkbox-item">
+              <input type="checkbox" id="testNewsletterConfirmation" required>
+              <label for="testNewsletterConfirmation">Send one test newsletter only to this recipient</label>
+            </div>
+            <button type="submit" id="sendTestNewsletterBtn" style="margin-top: 20px;">Send Test Newsletter</button>
+          </form>
         </div>
       </div>
     </div>

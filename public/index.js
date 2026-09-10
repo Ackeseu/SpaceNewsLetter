@@ -47,7 +47,10 @@ if (form) {
         }, 1000);
       } else {
         messageDiv.className = 'message error';
-        messageDiv.textContent = '✗ ' + (data.error || 'Subscription failed. Please try again.');
+        const serverError = data.error || (Array.isArray(data.errors) && data.errors[0]?.msg);
+        messageDiv.textContent = 'Error: ' + (serverError === 'Email already subscribed'
+          ? 'This email is already subscribed. Use the preferences link in any SEA newsletter to make changes.'
+          : serverError || 'Subscription failed. Please try again.');
       }
     } catch (error) {
       messageDiv.className = 'message error';

@@ -360,6 +360,37 @@ export const getSubscriberStatusHistory = async (req: Request, res: Response): P
   }
 };
 
+export const getSubscriberDeliveryHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) {
+      return;
+    }
+
+    const subscriber = await Subscriber.findByPk(req.params.id, {
+      attributes: ['id', 'email']
+    });
+    if (!subscriber) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    const deliveries = await NewsletterDeliveryLog.findAll({
+      where: { email: { [Op.iLike]: subscriber.email } },
+      attributes: ['triggerType', 'frequency', 'success', 'errorMessage', 'articleCount', 'deliveredAt'],
+      order: [['deliveredAt', 'DESC']],
+      limit: 10
+    });
+
+    res.status(200).json({
+      subscriber: { id: subscriber.id, email: subscriber.email },
+      deliveries
+    });
+  } catch (error) {
+    console.error('Get subscriber delivery history error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscriber delivery history' });
+  }
+};
+
 export const deleteSubscriberAdmin = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!requireAdminToken(req, res)) {

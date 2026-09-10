@@ -9,6 +9,7 @@ import {
   updatePreferences,
   getSubscriberStats,
   listAllSubscribers,
+  getSubscriberDeliveryHistory,
   getSubscriberStatusHistory,
   updateSubscriberAdmin,
   deleteSubscriberAdmin,
@@ -25,6 +26,7 @@ router.get('/admin/list', listAllSubscribers);
 
 // Admin: subscriber status history
 router.get('/admin/:id/history', getSubscriberStatusHistory);
+router.get('/admin/:id/delivery-history', getSubscriberDeliveryHistory);
 
 // Admin: update subscriber
 router.put(

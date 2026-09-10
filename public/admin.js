@@ -194,6 +194,7 @@ function renderSubscribersTable(subscribers) {
               <td>${(sub.topics || []).join(', ') || '-'}</td>
               <td>
                 <button class="action-btn edit-btn" data-action="edit" data-id="${sub.id}">Edit</button>
+                <button class="action-btn" data-action="history" data-id="${sub.id}" style="background:#334155;color:white;">History</button>
                 <button class="action-btn delete-btn" data-action="remove" data-id="${sub.id}" data-email="${sub.email}">Remove</button>
               </td>
             </tr>
@@ -889,8 +890,9 @@ function editSubscriber(id) {
       statusEl.className = `inline-status-pill ${sub.isActive ? 'active' : 'inactive'}`;
     }
     renderSubscriberStatusHistory([], true);
+    renderSubscriberDeliveryHistory([], true);
     document.getElementById('editModal').classList.add('show');
-    loadSubscriberStatusHistory(sub.id);
+    Promise.all([loadSubscriberStatusHistory(sub.id), loadSubscriberDeliveryHistory(sub.id)]);
   }
 }
 
@@ -947,6 +949,48 @@ async function loadSubscriberStatusHistory(id) {
     renderSubscriberStatusHistory(payload.history || [], false);
   } catch (error) {
     renderSubscriberStatusHistory([], false);
+  }
+}
+
+function renderSubscriberDeliveryHistory(entries, isLoading = false) {
+  const historyEl = document.getElementById('subscriberDeliveryHistory');
+  if (!historyEl) return;
+
+  if (isLoading) {
+    historyEl.innerHTML = '<div class="subscriber-history-empty">Loading delivery history...</div>';
+    return;
+  }
+
+  if (!Array.isArray(entries) || entries.length === 0) {
+    historyEl.innerHTML = '<div class="subscriber-history-empty">No delivery attempts recorded yet.</div>';
+    return;
+  }
+
+  historyEl.innerHTML = entries.map((entry) => `
+    <div class="subscriber-history-item">
+      <div class="subscriber-history-topline">
+        <span class="inline-status-pill ${entry.success ? 'active' : 'inactive'}">${entry.success ? 'Sent' : 'Failed'}</span>
+        <span class="subscriber-history-meta">${formatDateTime(entry.deliveredAt)}</span>
+      </div>
+      <div class="subscriber-history-detail">${entry.triggerType === 'test' ? 'Test' : 'Scheduled'}${entry.frequency ? ` (${entry.frequency})` : ''} | ${entry.articleCount ?? 0} articles</div>
+      ${entry.errorMessage ? `<div class="subscriber-history-meta">${entry.errorMessage}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function loadSubscriberDeliveryHistory(id) {
+  try {
+    const response = await fetch(`${API_URL}/api/subscriptions/admin/${id}/delivery-history`, {
+      headers: { 'x-admin-token': adminToken }
+    });
+    if (!response.ok) {
+      renderSubscriberDeliveryHistory([], false);
+      return;
+    }
+    const payload = await response.json();
+    renderSubscriberDeliveryHistory(payload.deliveries || [], false);
+  } catch (error) {
+    renderSubscriberDeliveryHistory([], false);
   }
 }
 
@@ -1513,6 +1557,10 @@ if (subscribersTable) {
       if (id) {
         editSubscriber(id);
       }
+    }
+    if (action === 'history') {
+      const id = target.getAttribute('data-id');
+      if (id) editSubscriber(id);
     }
     if (action === 'remove') {
       const id = target.getAttribute('data-id');

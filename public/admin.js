@@ -13,6 +13,7 @@ let currentEditEmail = null;
 let monitorLastUpdatedAt = null;
 let monitorLastUpdatedState = 'ok';
 let monitorLastUpdatedTimer = null;
+let recentDeliveryActivity = [];
 let subscriberPageState = {
   page: 1,
   pageSize: 25,
@@ -418,8 +419,9 @@ async function loadMonitorStatus() {
   const timelineEl = document.getElementById('monitorRunTimeline');
   const failureTrendsEl = document.getElementById('monitorFailureTrends');
   const domainHealthEl = document.getElementById('monitorDomainHealth');
+  const recentActivityEl = document.getElementById('recentDeliveryActivity');
 
-  if (!summaryEl || !servicesEl || !impactedEl || !timelineEl || !failureTrendsEl || !domainHealthEl) {
+  if (!summaryEl || !servicesEl || !impactedEl || !timelineEl || !failureTrendsEl || !domainHealthEl || !recentActivityEl) {
     return;
   }
 
@@ -431,6 +433,7 @@ async function loadMonitorStatus() {
   timelineEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading run timeline...</div>';
   failureTrendsEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading failure trends...</div>';
   domainHealthEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading domain health...</div>';
+  recentActivityEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading recent delivery activity...</div>';
 
   try {
     const response = await fetch(`${API_URL}/api/newsletters/monitor/status`, {
@@ -451,6 +454,7 @@ async function loadMonitorStatus() {
       timelineEl.innerHTML = '<div class="message show error">Unable to load run timeline.</div>';
       failureTrendsEl.innerHTML = '<div class="message show error">Unable to load failure trends.</div>';
       domainHealthEl.innerHTML = '<div class="message show error">Unable to load domain health.</div>';
+      recentActivityEl.innerHTML = '<div class="message show error">Unable to load recent delivery activity.</div>';
       setMonitorLastUpdatedState(monitorLastUpdatedAt ? 'stale' : 'unavailable');
       return;
     }
@@ -482,6 +486,7 @@ async function loadMonitorStatus() {
       ? data.failureTrends.topFailureReasons
       : [];
     const domainHealth = Array.isArray(data?.domainHealth) ? data.domainHealth : [];
+    recentDeliveryActivity = Array.isArray(data?.recentDeliveryActivity) ? data.recentDeliveryActivity : [];
 
     monitorLastUpdatedAt = Date.now();
     setMonitorLastUpdatedState('ok');
@@ -552,6 +557,24 @@ async function loadMonitorStatus() {
         <div class="status-dot ${service.up ? 'up' : 'down'}">${service.up ? 'UP' : 'DOWN'}</div>
       </div>
     `).join('');
+
+    if (recentDeliveryActivity.length === 0) {
+      recentActivityEl.innerHTML = '<div class="impact-item"><div class="impact-email">No delivery attempts recorded yet.</div><div class="impact-time">N/A</div></div>';
+    } else {
+      recentActivityEl.innerHTML = `
+        <table class="monitor-table">
+          <thead><tr><th>Type</th><th>Recipient</th><th>Sent At</th><th>Articles</th><th>Sender</th><th>Result</th></tr></thead>
+          <tbody>${recentDeliveryActivity.map((item, index) => `
+            <tr>
+              <td>${item.triggerType === 'test' ? 'Test' : `Scheduled (${item.frequency || 'unknown'})`}</td>
+              <td>${item.recipient || 'Unknown'}</td>
+              <td>${item.deliveredAt ? new Date(item.deliveredAt).toLocaleString() : 'Unknown'}</td>
+              <td>${item.articleCount ?? 0}</td>
+              <td>${item.senderAddress || 'Not configured'}</td>
+              <td>${item.success ? '<span class="trend-down">Sent</span>' : `<button type="button" class="action-btn delete-btn" data-delivery-error-index="${index}">Failed: View error</button>`}</td>
+            </tr>`).join('')}</tbody>
+        </table>`;
+    }
 
     if (impactedRecipients.length === 0) {
       impactedEl.innerHTML = '<div class="impact-item"><div class="impact-email">No impacted daily recipients in current window</div><div class="impact-time">OK</div></div>';
@@ -1108,6 +1131,23 @@ function closeSourceTestModal() {
   }
 }
 
+function showDeliveryError(index) {
+  const item = recentDeliveryActivity[index];
+  const modalEl = document.getElementById('deliveryErrorModal');
+  const summaryEl = document.getElementById('deliveryErrorSummary');
+  const detailEl = document.getElementById('deliveryErrorDetail');
+  if (!item || !modalEl || !summaryEl || !detailEl) return;
+
+  summaryEl.textContent = `${item.triggerType === 'test' ? 'Test' : 'Scheduled'} delivery to ${item.recipient || 'unknown recipient'} at ${item.deliveredAt ? new Date(item.deliveredAt).toLocaleString() : 'unknown time'}.`;
+  detailEl.textContent = item.errorMessage || 'No error detail was recorded.';
+  modalEl.classList.add('show');
+}
+
+function closeDeliveryErrorModal() {
+  const modalEl = document.getElementById('deliveryErrorModal');
+  if (modalEl) modalEl.classList.remove('show');
+}
+
 const testNewsletterForm = document.getElementById('testNewsletterForm');
 if (testNewsletterForm) {
   testNewsletterForm.addEventListener('submit', async (event) => {
@@ -1443,6 +1483,11 @@ if (closeSourceTestModalBtn) {
   closeSourceTestModalBtn.addEventListener('click', closeSourceTestModal);
 }
 
+const closeDeliveryErrorModalBtn = document.getElementById('closeDeliveryErrorModal');
+if (closeDeliveryErrorModalBtn) {
+  closeDeliveryErrorModalBtn.addEventListener('click', closeDeliveryErrorModal);
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const tabName = btn.getAttribute('data-tab');
@@ -1502,6 +1547,16 @@ if (sourcesTable) {
         testSource(sourceId);
       }
     }
+  });
+}
+
+const recentActivityTable = document.getElementById('recentDeliveryActivity');
+if (recentActivityTable) {
+  recentActivityTable.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const index = Number(target.getAttribute('data-delivery-error-index'));
+    if (Number.isInteger(index) && index >= 0) showDeliveryError(index);
   });
 }
 

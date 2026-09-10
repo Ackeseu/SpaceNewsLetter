@@ -1768,6 +1768,21 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
       failed: Number(row.failed)
     }));
 
+    const recentDeliveryActivity = await NewsletterDeliveryLog.findAll({
+      attributes: ['email', 'triggerType', 'frequency', 'success', 'errorMessage', 'articleCount', 'deliveredAt'],
+      order: [['deliveredAt', 'DESC']],
+      limit: 12,
+      raw: true
+    }) as Array<{
+      email: string;
+      triggerType: 'scheduled' | 'test';
+      frequency: string;
+      success: boolean;
+      errorMessage: string | null;
+      articleCount: number;
+      deliveredAt: string | Date;
+    }>;
+
     const latestSourceCreatedAt = sourcesBreakdownRaw
       .map((row) => new Date(row.latestCreatedAt))
       .filter((value) => Number.isFinite(value.getTime()))
@@ -2025,6 +2040,16 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         previousWindowHours: 24,
         topFailureReasons
       },
+      recentDeliveryActivity: recentDeliveryActivity.map((item) => ({
+        recipient: item.email,
+        triggerType: item.triggerType,
+        frequency: item.frequency,
+        success: item.success,
+        errorMessage: item.errorMessage,
+        articleCount: item.articleCount,
+        deliveredAt: new Date(item.deliveredAt).toISOString(),
+        senderAddress: process.env.SENDER_EMAIL || null
+      })),
       domainHealth,
       sourcesBreakdown: sourcesBreakdownRaw.map((row) => ({
         source: row.source,

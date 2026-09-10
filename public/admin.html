@@ -1335,6 +1335,11 @@
             <div class="loading"><span class="spinner"></span>Loading monitor data...</div>
           </div>
 
+          <div class="monitor-subsection-title">Recent Delivery Activity</div>
+          <div id="recentDeliveryActivity">
+            <div class="loading"><span class="spinner"></span>Loading recent delivery activity...</div>
+          </div>
+
           <div class="monitor-subsection-title">Real Daily Recipients Without Recent Success</div>
           <div class="impact-list" id="monitorImpactedRecipients">
             <div class="loading"><span class="spinner"></span>Checking impacted recipients...</div>
@@ -1435,6 +1440,15 @@
       <div class="modal-header" id="sourceTestModalTitle">Source Test Result</div>
       <div class="source-test-summary" id="sourceTestSummary">No result yet.</div>
       <ul class="source-test-list" id="sourceTestList"></ul>
+    </div>
+  </div>
+
+  <div class="modal" id="deliveryErrorModal">
+    <div class="modal-content" style="position: relative;">
+      <button class="modal-close" id="closeDeliveryErrorModal">&times;</button>
+      <div class="modal-header">Delivery Error Details</div>
+      <div id="deliveryErrorSummary" class="source-test-summary"></div>
+      <pre id="deliveryErrorDetail" style="white-space:pre-wrap; overflow-wrap:anywhere; margin-top:16px; padding:12px; background:#f8f9ff; border:1px solid #e0e0e0; border-radius:6px;"></pre>
     </div>
   </div>
 

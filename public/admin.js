@@ -421,8 +421,9 @@ async function loadMonitorStatus() {
   const failureTrendsEl = document.getElementById('monitorFailureTrends');
   const domainHealthEl = document.getElementById('monitorDomainHealth');
   const recentActivityEl = document.getElementById('recentDeliveryActivity');
+  const readinessEl = document.getElementById('scheduledSendReadiness');
 
-  if (!summaryEl || !servicesEl || !impactedEl || !timelineEl || !failureTrendsEl || !domainHealthEl || !recentActivityEl) {
+  if (!summaryEl || !servicesEl || !impactedEl || !timelineEl || !failureTrendsEl || !domainHealthEl || !recentActivityEl || !readinessEl) {
     return;
   }
 
@@ -435,6 +436,7 @@ async function loadMonitorStatus() {
   failureTrendsEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading failure trends...</div>';
   domainHealthEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading domain health...</div>';
   recentActivityEl.innerHTML = '<div class="loading"><span class="spinner"></span>Loading recent delivery activity...</div>';
+  readinessEl.innerHTML = '<div class="loading"><span class="spinner"></span>Checking scheduled send readiness...</div>';
 
   try {
     const response = await fetch(`${API_URL}/api/newsletters/monitor/status`, {
@@ -456,6 +458,7 @@ async function loadMonitorStatus() {
       failureTrendsEl.innerHTML = '<div class="message show error">Unable to load failure trends.</div>';
       domainHealthEl.innerHTML = '<div class="message show error">Unable to load domain health.</div>';
       recentActivityEl.innerHTML = '<div class="message show error">Unable to load recent delivery activity.</div>';
+      readinessEl.innerHTML = '<div class="message show error">Unable to check scheduled send readiness.</div>';
       setMonitorLastUpdatedState(monitorLastUpdatedAt ? 'stale' : 'unavailable');
       return;
     }
@@ -493,6 +496,8 @@ async function loadMonitorStatus() {
     const latestTestResult = latestTestDelivery
       ? `${latestTestDelivery.success ? 'Sent' : 'Failed'} ${new Date(latestTestDelivery.deliveredAt).toLocaleString()}`
       : 'No test send recorded';
+    const readiness = data?.scheduledSendReadiness || { ready: false, checks: [] };
+    const readinessChecks = Array.isArray(readiness.checks) ? readiness.checks : [];
 
     monitorLastUpdatedAt = Date.now();
     setMonitorLastUpdatedState('ok');
@@ -571,6 +576,19 @@ async function loadMonitorStatus() {
         <div class="status-dot ${service.up ? 'up' : 'down'}">${service.up ? 'UP' : 'DOWN'}</div>
       </div>
     `).join('');
+
+    readinessEl.innerHTML = `
+      <div class="impact-list">
+        <div class="impact-item">
+          <div class="impact-email">${readiness.ready ? 'Ready for scheduled delivery' : 'Not ready for scheduled delivery'}</div>
+          <div class="status-dot ${readiness.ready ? 'up' : 'down'}">${readiness.ready ? 'Ready' : 'Blocked'}</div>
+        </div>
+        ${readinessChecks.map((check) => {
+          const state = check.passed === null ? 'N/A' : (check.passed ? 'Pass' : 'Fail');
+          const stateClass = check.passed === null ? '' : (check.passed ? 'up' : 'down');
+          return `<div class="impact-item"><div><div class="impact-email">${check.label}</div><div class="impact-time">${check.detail}</div></div><div class="status-dot ${stateClass}">${state}</div></div>`;
+        }).join('')}
+      </div>`;
 
     if (recentDeliveryActivity.length === 0) {
       recentActivityEl.innerHTML = '<div class="impact-item"><div class="impact-email">No delivery attempts recorded yet.</div><div class="impact-time">N/A</div></div>';

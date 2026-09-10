@@ -1844,6 +1844,17 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
 
     const ignoredDeliveriesLast24h = Math.max(allDeliveriesLast24h - deliveriesLast24h, 0);
     const ignoredFailedDeliveriesLast24h = Math.max(allFailedDeliveriesLast24h - failedDeliveriesLast24h, 0);
+    const activeSenderAddress = String(process.env.SENDER_EMAIL || '').trim();
+    const latestTestDelivery = recentDeliveryActivity.find((item) => item.triggerType === 'test') || null;
+    const readinessChecks = [
+      { label: 'Sender configured', passed: Boolean(activeSenderAddress), detail: activeSenderAddress || 'SENDER_EMAIL is not configured' },
+      { label: 'Fresh newsletter content', passed: healthy, detail: healthy ? `${articlesLast24h} article(s) added in the last 24 hours` : `No fresh article within ${staleThresholdMinutes} minute threshold` },
+      { label: 'Eligible recipients', passed: verifiedActive > 0, detail: verifiedActive > 0 ? `${verifiedActive} verified active subscriber(s)` : 'No verified active subscribers' },
+      { label: 'Latest test send', passed: latestTestDelivery ? latestTestDelivery.success : null, detail: latestTestDelivery ? `${latestTestDelivery.success ? 'Sent' : 'Failed'} at ${new Date(latestTestDelivery.deliveredAt).toISOString()}` : 'No test send recorded yet' }
+    ];
+    const scheduledSendReady = readinessChecks
+      .filter((check) => check.passed !== null)
+      .every((check) => check.passed);
 
     const dailySubscriberRows = await Subscriber.findAll({
       where: {
@@ -2021,8 +2032,12 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         failedDeliveriesLast24h: failedTestDeliveriesLast24h,
         failureRatioLast24h: testFailureRatioLast24h
       },
+      scheduledSendReadiness: {
+        ready: scheduledSendReady,
+        checks: readinessChecks
+      },
       sender: {
-        address: process.env.SENDER_EMAIL || null
+        address: activeSenderAddress || null
       },
       realRecipientRisk: {
         lookbackHours: realRecipientLookbackHours,

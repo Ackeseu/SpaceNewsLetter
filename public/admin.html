@@ -120,20 +120,26 @@
     .header {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      padding: 20px;
+      padding: 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      min-height: 150px;
+      position: relative;
     }
 
     .header .brand-logo {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 150px;
+      overflow: hidden;
     }
 
     .header .brand-logo img {
-      height: 42px;
-      width: auto;
+      width: min(100%, 1152px);
+      height: auto;
       display: block;
     }
 
@@ -155,6 +161,9 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      position: absolute;
+      top: 16px;
+      right: 20px;
     }
 
     .content {
@@ -890,7 +899,17 @@
     @media (max-width: 768px) {
       .header {
         flex-direction: column;
-        gap: 15px;
+        min-height: 0;
+      }
+
+      .header .brand-logo {
+        min-height: 0;
+        padding-top: 52px;
+      }
+
+      .header-actions {
+        top: 10px;
+        right: 12px;
       }
 
       .tabs {
@@ -962,7 +981,7 @@
   <div class="dashboard" id="dashboard">
     <div class="header">
       <div class="brand-logo" aria-label="SEA admin dashboard">
-        <img src="/SEA%20Banner%20Copy.png" alt="SEA logo">
+        <img src="/SEA%20email%20banner.png" alt="Space Economy Association Hong Kong banner">
       </div>
       <div class="header-actions">
         <a class="logout-btn" href="https://newspace-newsletter-api.azurewebsites.net/health" target="_blank" rel="noopener noreferrer">API Status</a>

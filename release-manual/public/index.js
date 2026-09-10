@@ -1,22 +1,26 @@
 const form = document.getElementById('subscriptionForm');
 const messageDiv = document.getElementById('message');
 const loadingDiv = document.getElementById('loading');
+const subscribeButton = document.getElementById('subscribeButton');
 
 if (form) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const email = document.getElementById('email').value;
-    const firstName = document.getElementById('firstName').value;
+    const email = document.getElementById('email').value.trim();
+    const firstName = document.getElementById('firstName').value.trim();
     const frequencyEl = document.querySelector('input[name="frequency"]:checked');
     const frequency = frequencyEl ? frequencyEl.value : 'weekly';
     const topics = Array.from(document.querySelectorAll('input[name="topics"]:checked'))
       .map(cb => cb.value);
 
-    // Show loading state
+    subscribeButton.disabled = true;
+    subscribeButton.textContent = 'Submitting...';
     loadingDiv.classList.add('active');
+    loadingDiv.setAttribute('aria-hidden', 'false');
     messageDiv.className = 'message';
     messageDiv.textContent = '';
+    let requestSucceeded = false;
 
     try {
       const response = await fetch('/api/subscriptions/subscribe', {
@@ -32,10 +36,12 @@ if (form) {
         })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        // Redirect to thank you page after 1 second
+        requestSucceeded = true;
+        messageDiv.className = 'message success';
+        messageDiv.textContent = 'Thanks. Check your inbox to verify your subscription.';
         setTimeout(() => {
           window.location.href = '/thank-you.html';
         }, 1000);
@@ -49,6 +55,11 @@ if (form) {
       console.error('Error:', error);
     } finally {
       loadingDiv.classList.remove('active');
+      loadingDiv.setAttribute('aria-hidden', 'true');
+      if (!requestSucceeded) {
+        subscribeButton.disabled = false;
+        subscribeButton.textContent = 'Subscribe Now';
+      }
     }
   });
 }

@@ -149,6 +149,15 @@
       overflow: hidden;
     }
 
+    .form-intro {
+      max-width: 650px;
+      margin: 0 0 26px;
+      color: var(--sea-ink-300);
+      font-size: 15px;
+      position: relative;
+      z-index: 1;
+    }
+
     .form-card::before {
       content: '';
       position: absolute;
@@ -163,6 +172,22 @@
       margin-bottom: 22px;
       position: relative;
       z-index: 1;
+    }
+
+    fieldset {
+      border: 0;
+      padding: 0;
+      min-width: 0;
+    }
+
+    legend {
+      display: block;
+      font-weight: 600;
+      color: #e8f0ff;
+      margin-bottom: 9px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
     }
 
     label {
@@ -308,6 +333,7 @@
     button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+      transform: none;
     }
 
     .message {
@@ -444,19 +470,20 @@
     </div>
 
     <div class="form-card">
-      <form id="subscriptionForm">
+      <form id="subscriptionForm" aria-labelledby="registration-heading">
+        <p class="form-intro" id="registration-heading">Choose the coverage that fits your work. We will send a verification email before your subscription becomes active.</p>
         <div class="form-group">
           <label for="email">Email Address *</label>
-          <input type="email" id="email" name="email" placeholder="your@email.com" required>
+          <input type="email" id="email" name="email" placeholder="your@email.com" autocomplete="email" required>
         </div>
 
         <div class="form-group">
           <label for="firstName">First Name</label>
-          <input type="text" id="firstName" name="firstName" placeholder="John">
+          <input type="text" id="firstName" name="firstName" placeholder="John" autocomplete="given-name">
         </div>
 
-        <div class="form-group">
-          <label>Newsletter Frequency *</label>
+        <fieldset class="form-group">
+          <legend>Newsletter Frequency *</legend>
           <div class="frequency-options">
             <div class="radio-label">
               <input type="radio" id="daily" name="frequency" value="daily">
@@ -467,10 +494,10 @@
               <span>Weekly</span>
             </div>
           </div>
-        </div>
+        </fieldset>
 
-        <div class="topics-group">
-          <label>Interests & Topics</label>
+        <fieldset class="topics-group">
+          <legend>Interests &amp; Topics</legend>
           <div class="checkbox-wrapper">
             <input type="checkbox" id="topic1" name="topics" value="space exploration" checked>
             <label for="topic1">Space Exploration</label>
@@ -491,16 +518,20 @@
             <input type="checkbox" id="topic5" name="topics" value="satellite news">
             <label for="topic5">Satellite Technology</label>
           </div>
-        </div>
+          <div class="checkbox-wrapper">
+            <input type="checkbox" id="topic6" name="topics" value="alien life">
+            <label for="topic6">Alien Life Science</label>
+          </div>
+        </fieldset>
 
-        <button type="submit">Subscribe Now</button>
+        <button type="submit" id="subscribeButton">Subscribe Now</button>
 
-        <div class="loading" id="loading">
+        <div class="loading" id="loading" role="status" aria-live="polite" aria-hidden="true">
           <span class="spinner"></span>
           Processing...
         </div>
 
-        <div class="message" id="message"></div>
+        <div class="message" id="message" role="alert" aria-live="polite"></div>
       </form>
     </div>
   </div>

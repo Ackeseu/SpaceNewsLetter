@@ -488,6 +488,11 @@ async function loadMonitorStatus() {
       : [];
     const domainHealth = Array.isArray(data?.domainHealth) ? data.domainHealth : [];
     recentDeliveryActivity = Array.isArray(data?.recentDeliveryActivity) ? data.recentDeliveryActivity : [];
+    const senderAddress = data?.sender?.address || 'Not configured';
+    const latestTestDelivery = recentDeliveryActivity.find((item) => item.triggerType === 'test');
+    const latestTestResult = latestTestDelivery
+      ? `${latestTestDelivery.success ? 'Sent' : 'Failed'} ${new Date(latestTestDelivery.deliveredAt).toLocaleString()}`
+      : 'No test send recorded';
 
     monitorLastUpdatedAt = Date.now();
     setMonitorLastUpdatedState('ok');
@@ -520,6 +525,14 @@ async function loadMonitorStatus() {
       <div class="monitor-card">
         <div class="monitor-label">Test Sends (24h)</div>
         <div class="monitor-value">${failedTestDeliveryCount}/${testDeliveryCount} failed</div>
+      </div>
+      <div class="monitor-card">
+        <div class="monitor-label">Active Sender</div>
+        <div class="monitor-value" style="font-size:14px;overflow-wrap:anywhere;">${senderAddress}</div>
+      </div>
+      <div class="monitor-card">
+        <div class="monitor-label">Latest Test Send</div>
+        <div class="monitor-value" style="font-size:14px;">${latestTestResult}</div>
       </div>
       <div class="monitor-card">
         <div class="monitor-label">Ignored Demo/Test (24h)</div>

@@ -2021,6 +2021,9 @@ export const getPipelineStatus = async (req: Request, res: Response): Promise<vo
         failedDeliveriesLast24h: failedTestDeliveriesLast24h,
         failureRatioLast24h: testFailureRatioLast24h
       },
+      sender: {
+        address: process.env.SENDER_EMAIL || null
+      },
       realRecipientRisk: {
         lookbackHours: realRecipientLookbackHours,
         impactedDailyRecipientsCount: impactedDailyRecipients.length,

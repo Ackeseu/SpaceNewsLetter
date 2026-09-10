@@ -1160,6 +1160,57 @@ if (testNewsletterForm) {
   });
 }
 
+const newsletterPreviewForm = document.getElementById('newsletterPreviewForm');
+if (newsletterPreviewForm) {
+  newsletterPreviewForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const emailInput = document.getElementById('newsletterPreviewEmail');
+    const submitButton = document.getElementById('generateNewsletterPreviewBtn');
+    const resultEl = document.getElementById('newsletterPreviewResult');
+    const subjectEl = document.getElementById('newsletterPreviewSubject');
+    const metaEl = document.getElementById('newsletterPreviewMeta');
+    const frameEl = document.getElementById('newsletterPreviewFrame');
+    const email = emailInput?.value.trim().toLowerCase();
+
+    if (!email) {
+      showMessage('dashMessage', 'Enter a subscriber email to generate a preview', 'error');
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = 'Generating Preview...';
+
+    try {
+      const response = await fetch(`${API_URL}/api/newsletters/preview`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminToken
+        },
+        body: JSON.stringify({ email })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        showMessage('dashMessage', payload.detail ? `${payload.error}: ${payload.detail}` : (payload.error || 'Failed to generate newsletter preview'), 'error');
+        return;
+      }
+
+      subjectEl.textContent = payload.subject;
+      metaEl.textContent = `${payload.articleCount} articles selected for ${payload.recipient} (${payload.frequency})`;
+      frameEl.srcdoc = payload.html;
+      resultEl.style.display = 'block';
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+      showMessage('dashMessage', 'Error generating newsletter preview', 'error');
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Generate Preview';
+    }
+  });
+}
+
 function logout() {
   localStorage.removeItem('adminToken');
   location.reload();

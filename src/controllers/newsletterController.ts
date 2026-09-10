@@ -5,7 +5,7 @@ import Article from '../models/Article';
 import Subscriber from '../models/Subscriber';
 import NewsletterDeliveryLog from '../models/NewsletterDeliveryLog';
 import ArticleTopicSendStat from '../models/ArticleTopicSendStat';
-import { consumeLastEmailSendError, sendEmail, sendNewsletterEmail } from '../services/emailService';
+import { consumeLastEmailSendError, renderNewsletterPreviewHtml, sendEmail, sendNewsletterEmail } from '../services/emailService';
 import { aggregateNews, seedDefaultSourcesIfEmpty } from '../services/newsAggregator';
 import { Op, QueryTypes, WhereOptions } from 'sequelize';
 import crypto from 'crypto';
@@ -81,6 +81,7 @@ const TOPIC_CATEGORY_ALIASES: Record<string, string[]> = {
   'space exploration': ['space'],
   launches: ['launches', 'launch', 'rocket', 'space'],
   astronomy: ['astronomy', 'space'],
+  'alien life': ['alien-life', 'astronomy', 'science', 'space'],
   'space economy': ['business', 'economy', 'newspace', 'commercial', 'startup', 'low-altitude-economy', 'space'],
   'satellite news': ['satellite', 'space']
 };
@@ -891,6 +892,48 @@ export const sendTestNewsletter = async (req: Request, res: Response): Promise<v
       error: 'Failed to send test newsletter',
       detail: error instanceof Error ? error.message : String(error)
     });
+  }
+};
+
+export const previewNewsletter = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!requireAdminToken(req, res)) return;
+
+    const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      res.status(400).json({ error: 'Email is required' });
+      return;
+    }
+
+    const subscriber = await Subscriber.findOne({
+      where: { email: { [Op.iLike]: normalizedEmail } },
+      order: [['isActive', 'DESC'], ['isVerified', 'DESC'], ['updatedAt', 'DESC']]
+    });
+    if (!subscriber) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    const preferenceWhere = buildPreferenceWhere(subscriber);
+    const recentThreshold = new Date();
+    recentThreshold.setDate(recentThreshold.getDate() - 7);
+    const [recentCandidates, fallbackCandidates] = await Promise.all([
+      Article.findAll({ where: { pubDate: { [Op.gte]: recentThreshold }, ...preferenceWhere }, limit: 200, order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']] }),
+      Article.findAll({ where: preferenceWhere, limit: 200, order: [['priority', 'DESC NULLS LAST'], ['pubDate', 'DESC']] })
+    ]);
+    const recentIds = new Set(recentCandidates.map((article) => article.id));
+    const candidates = [...recentCandidates, ...fallbackCandidates.filter((article) => !recentIds.has(article.id))];
+    const frequency = normalizeNewsletterFrequency(subscriber.frequency);
+    const filteredCandidates = REPEAT_SUPPRESSION_FREQUENCIES.has(frequency)
+      ? await filterRepeatedSpaceNewsArticles(candidates)
+      : candidates;
+    const articles = orderArticlesForNewsletterSections(selectArticlesBySessionPlan(filteredCandidates, await getRecentlySentHashes(frequency)));
+    const preview = renderNewsletterPreviewHtml(articles, subscriber.unsubscribeToken || 'preview', subscriber.preferencesToken || 'preview', frequency);
+
+    res.status(200).json({ recipient: subscriber.email, frequency, subject: preview.subject, articleCount: articles.length, html: preview.html });
+  } catch (error) {
+    console.error('Preview newsletter error:', error);
+    res.status(500).json({ error: 'Failed to generate newsletter preview', detail: error instanceof Error ? error.message : String(error) });
   }
 };
 

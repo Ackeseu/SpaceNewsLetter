@@ -1010,6 +1010,7 @@
         <button class="tab-btn" data-tab="preferences">Edit Preferences</button>
         <button class="tab-btn" data-tab="sources">Sources</button>
         <button class="tab-btn" data-tab="monitor">Monitoring</button>
+        <button class="tab-btn" data-tab="preview">Preview</button>
         <button class="tab-btn" data-tab="test">Send Test</button>
       </div>
 
@@ -1370,6 +1371,24 @@
             </div>
             <button type="submit" id="sendTestNewsletterBtn" style="margin-top: 20px;">Send Test Newsletter</button>
           </form>
+        </div>
+      </div>
+
+      <div id="preview" class="tab-content">
+        <div class="form-card">
+          <h2>Newsletter Preview</h2>
+          <form id="newsletterPreviewForm">
+            <div class="form-group">
+              <label for="newsletterPreviewEmail">Subscriber Email</label>
+              <input type="email" id="newsletterPreviewEmail" value="napolex@msn.com" required>
+            </div>
+            <button type="submit" id="generateNewsletterPreviewBtn" style="margin-top: 20px;">Generate Preview</button>
+          </form>
+        </div>
+        <div class="form-card" id="newsletterPreviewResult" style="display:none;">
+          <h2 id="newsletterPreviewSubject"></h2>
+          <p id="newsletterPreviewMeta" style="margin: 10px 0 18px; color: #666;"></p>
+          <iframe id="newsletterPreviewFrame" title="Newsletter preview" sandbox="allow-popups" style="width:100%; height:900px; border:1px solid #e0e0e0; border-radius:6px; background:white;"></iframe>
         </div>
       </div>
     </div>

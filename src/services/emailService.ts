@@ -813,6 +813,27 @@ export const sendVerificationEmail = async (email: string, token: string): Promi
   });
 };
 
+export const renderNewsletterPreviewHtml = (
+  articles: any[],
+  unsubscribeToken: string,
+  preferencesToken: string,
+  frequency?: 'daily' | 'weekly' | 'monthly'
+): { subject: string; html: string } => {
+  const editionLabel = frequency === 'daily' ? 'Daily Edition' : frequency === 'weekly' ? 'Weekly Edition' : frequency === 'monthly' ? 'Monthly Edition' : '';
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const issueDateLabel = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const subject = `SEA NewSpace Summary${editionLabel ? ` - ${editionLabel}` : ''} - ${issueDateLabel}`;
+  const renderArticle = (article: any): string => {
+    const imageUrl = isRenderableSourceImageUrl(article?.imageUrl) ? normalizeImageUrlForFetch(article.imageUrl) : '';
+    return `<div class="article"><h3>${article.title || 'Untitled'}</h3>${imageUrl ? `<img src="${imageUrl}" alt="${article.title || 'Article image'}">` : ''}<p>${article.description || ''}</p><p><a href="${article.link || '#'}">Read more</a></p><small>Source: ${article.source || 'Unknown'} | ${new Date(article.pubDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</small></div>`;
+  };
+  const seaArticles = articles.filter((article) => isSeaEventSource(article?.source));
+  const sourceArticles = articles.filter((article) => !isSeaEventSource(article?.source));
+  const html = `<!DOCTYPE html><html><head><style>body{margin:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1f2937;line-height:1.6}.container{max-width:700px;margin:0 auto;background:#fff;padding:20px}.header{text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:18px}.header img{display:block;width:100%;height:auto}.notice{margin:14px 0;padding:12px;border:2px solid #d97706;background:#fff7ed;color:#7c2d12;font-weight:700;text-align:center}.section{margin:24px 0}.section h2{border-bottom:2px solid #3b82f6;padding-bottom:8px}.article{margin:16px 0;padding:16px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb}.article h3{margin:0 0 10px}.article img{max-width:100%;height:auto;border-radius:6px}.article small{color:#6b7280}.footer{border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;font-size:12px;color:#6b7280}</style></head><body><div class="container"><div class="header"><img src="${appUrl.replace(/\/$/, '')}/SEA%20Banner%20Copy.png" alt="SEA NewSpace Summary"><div class="notice">This AI summary service has been provided exclusively to members of SEA, strictly for educational purposes, and not for redistribution, reference, or referral.</div><h1>SEA NewSpace Summary</h1></div><div class="section"><h2>Space News</h2>${sourceArticles.map(renderArticle).join('') || '<p>No additional source updates available for this issue.</p>'}</div><div class="section"><h2>Updates from SEA</h2>${seaArticles.map(renderArticle).join('') || '<p>No SEA event updates available for this issue.</p>'}</div><div class="footer"><p>Preview only - no email has been sent.</p><p><a href="${appUrl}/api/subscriptions/preferences/${preferencesToken}">Manage preferences</a> | <a href="${appUrl}/api/subscriptions/unsubscribe/${unsubscribeToken}">Unsubscribe</a></p></div></div></body></html>`;
+
+  return { subject, html };
+};
+
 export const sendNewsletterEmail = async (
   email: string,
   articles: any[],

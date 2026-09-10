@@ -4,6 +4,7 @@ import {
   getLatestArticles,
   getFeaturedArticles,
   getArticleById,
+  previewNewsletter,
   sendTestNewsletter,
   aggregateNewsletterArticles,
   sendScheduledNewsletters,
@@ -50,6 +51,7 @@ router.get('/admin/priority-settings', getNewsletterPrioritySettingsAdmin);
 router.put('/admin/priority-settings', updateNewsletterPrioritySettingsAdmin);
 
 // Send test newsletter
+router.post('/preview', [body('email').isEmail().normalizeEmail()], previewNewsletter);
 router.post(
   '/send-test',
   [

@@ -1142,7 +1142,10 @@ if (testNewsletterForm) {
       const payload = await response.json();
 
       if (!response.ok) {
-        showMessage('dashMessage', payload.error || 'Failed to send test newsletter', 'error');
+        const detail = typeof payload.detail === 'string' && payload.detail.trim()
+          ? `: ${payload.detail.trim()}`
+          : '';
+        showMessage('dashMessage', `${payload.error || 'Failed to send test newsletter'}${detail}`, 'error');
         return;
       }
 

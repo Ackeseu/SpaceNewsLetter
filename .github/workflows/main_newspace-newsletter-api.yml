@@ -98,7 +98,7 @@ jobs:
         with:
           name: functions-app
           path: functions-artifacts
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -126,7 +126,8 @@ jobs:
             az webapp deployment source config-zip \
               --resource-group newspace-newsletter-rg \
               --name newspace-newsletter-api \
-              --src "$ZIP_PATH"
+              --src "$ZIP_PATH" \
+              --timeout 3600
 
             FUNCTIONS_ZIP_PATH=$(find functions-artifacts -type f -name 'functions-release.zip' | head -n 1)
             if [ -z "$FUNCTIONS_ZIP_PATH" ]; then
@@ -147,5 +148,5 @@ jobs:
             az functionapp deployment source config-zip \
               --resource-group newspace-newsletter-rg \
               --name newspacenewsletter-func \
-              --src "$FUNCTIONS_ZIP_PATH"
-          
+              --src "$FUNCTIONS_ZIP_PATH" \
+              --timeout 3600

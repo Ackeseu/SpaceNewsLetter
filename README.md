@@ -20,7 +20,7 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 - **Database**: Azure Database for PostgreSQL with Sequelize ORM
 - **Email**: Azure Communication Services
 - **Scheduling**: Azure Functions (Timer Triggers)
-- **News Sources**: RSS feeds (SpaceNews, NASA, ESA), curated OASA/InvestHK/OASES pages, and NewsAPI
+- **News Sources**: RSS feeds (SpaceNews, NASA, ESA), SEA events page, curated OASA/InvestHK/OASES pages, and NewsAPI
 
 ## Project Structure
 

@@ -5,6 +5,7 @@ All notable changes to the NewSpace Newsletter project will be documented in thi
 ## [Unreleased]
 
 ### Fixed
+- **SEA Event Updates** - Updated the SEA events scraper for the current event-card markup so upcoming events populate the newsletter's "Updates from SEA" section again.
 - **OASA Banner Email Rendering** - Fixed issue where OASA logo was not rendering in newsletter emails or appeared as external URL instead of embedded image
   - Optimized `public/oasa-banner.png` from 886KB to 154KB (82.6% reduction) via image resizing (2360×1328px → 700×394px)
   - Identified and corrected `EMAIL_PAYLOAD_SOFT_LIMIT_BYTES` configuration from 3MB to 9.5MB (just below Azure's 10MB hard limit)

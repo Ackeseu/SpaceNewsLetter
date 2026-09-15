@@ -1101,6 +1101,111 @@ const isCurrentOrUpcomingSeaEvent = (pubDate?: Date): boolean => {
 
 const isGenericSeaTitle = (title: string): boolean => SEA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
 
+const parseSeaEventDate = (value?: string): Date | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const cleaned = value.trim();
+  if (!cleaned) {
+    return undefined;
+  }
+
+  const isoMatch = cleaned.match(/^\d{4}-\d{2}-\d{2}$/);
+  if (isoMatch) {
+    const parsed = new Date(`${cleaned}T00:00:00+08:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  const parsed = new Date(cleaned);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  return undefined;
+};
+
+export const parseSeaEventCardsFromHtml = (html: string): Array<{
+  title: string;
+  description: string;
+  link: string;
+  imageUrl?: string;
+  pubDate?: Date;
+}> => {
+  const $ = cheerio.load(html);
+  const entries: Array<{ title: string; description: string; link: string; imageUrl?: string; pubDate?: Date }> = [];
+
+  $('div.event-card').each((_, element) => {
+    const card = $(element);
+    const titleText = normalizeText(
+      card.find('.event-title').first().text()
+      || card.find('a[data-hook="title"]').first().text()
+      || card.find('[data-hook="title"]').first().text()
+      || ''
+    );
+
+    if (!titleText || isGenericSeaTitle(titleText)) {
+      return;
+    }
+
+    const candidateLinks = card.find('a[href]').toArray()
+      .map((node) => $(node).attr('href'))
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim())
+      .filter((value) => !value.startsWith('#'));
+
+    const link = candidateLinks.find((value) => /event-details|event/i.test(value))
+      || card.find('a[href*="event-details"]').first().attr('href')
+      || card.find('a[href*="event"]').first().attr('href')
+      || '';
+
+    if (!link) {
+      return;
+    }
+
+    const resolvedLink = resolveAbsoluteUrl(link, SEA_EVENTS_URL) || link;
+    const dateFromAttribute = parseSeaEventDate(card.attr('data-event-date') || undefined);
+    const dateFromCard = parseSeaEventDate(
+      card.find('.event-date-box .day').first().text().trim()
+      && card.find('.event-date-box .month').first().text().trim()
+        ? `${new Date().getFullYear()}-${card.find('.event-date-box .month').first().text().trim()}-${card.find('.event-date-box .day').first().text().trim()}`
+        : undefined
+    );
+    const pubDate = dateFromAttribute || dateFromCard;
+
+    if (!isCurrentOrUpcomingSeaEvent(pubDate)) {
+      return;
+    }
+
+    const imageUrl = resolveAbsoluteUrl(
+      card.find('.event-card-thumb img').first().attr('src')
+      || card.find('img').first().attr('src')
+      || undefined,
+      SEA_EVENTS_URL
+    );
+
+    const paragraphs = card.find('.event-info p').toArray()
+      .map((node) => normalizeText($(node).text()))
+      .filter(Boolean);
+
+    const description = paragraphs.length > 0
+      ? paragraphs.join(' ')
+      : normalizeText(card.find('.event-info').first().text().replace(titleText, '').trim());
+
+    entries.push({
+      title: titleText,
+      description: description || 'SEA event details and schedule are available on the event page.',
+      link: resolvedLink,
+      imageUrl: imageUrl || undefined,
+      pubDate
+    });
+  });
+
+  return entries;
+};
+
 export const getCuratedSeaEventEntries = (): Array<{
   title: string;
   description: string;
@@ -1129,7 +1234,6 @@ const fetchSeaEvents = async (): Promise<number> => {
     }
 
     const html = await response.text();
-    const $ = cheerio.load(html);
     const eventLinks = new Map<string, {
       title: string;
       description: string;
@@ -1150,71 +1254,32 @@ const fetchSeaEvents = async (): Promise<number> => {
       });
     }
 
-    $('li[data-hook="events-card"]').each((_, element) => {
-      const card = $(element);
-      const titleAnchor = card.find('a[data-hook="title"]').first();
-      const href = titleAnchor.attr('href');
-      if (!href) {
-        return;
+    for (const parsedEvent of parseSeaEventCardsFromHtml(html)) {
+      if (!parsedEvent.link || eventLinks.has(parsedEvent.link)) {
+        continue;
       }
 
-      const link = resolveAbsoluteUrl(href, SEA_EVENTS_URL);
-      if (!link) {
-        return;
-      }
-
-      if (eventLinks.has(link)) {
-        return;
-      }
-
-      const titleText = normalizeText(titleAnchor.text())
-        || normalizeText(titleAnchor.attr('aria-label') || '')
-        || normalizeText(titleAnchor.attr('title') || '');
-
-      if (!titleText || isGenericSeaTitle(titleText)) {
-        return;
-      }
-
-      const normalizedTitle = titleText.toLowerCase();
+      const normalizedTitle = parsedEvent.title.toLowerCase();
       if (SEA_EVENTS_TITLE_EXCLUSIONS.some((keyword) => normalizedTitle.includes(keyword))) {
-        return;
+        continue;
       }
 
-      if (titleText.length < 6) {
-        return;
+      if (parsedEvent.title.length < 6) {
+        continue;
       }
 
-      const containerText = normalizeText(card.text());
-      const pubDate = extractEventDate(containerText);
-      if (!isCurrentOrUpcomingSeaEvent(pubDate)) {
-        return;
-      }
+      const description = trimTextForEmail(
+        stripSeaDescriptionCtas(parsedEvent.description),
+        1200
+      ) || 'SEA event details and schedule are available on the event page.';
 
-      const descriptionContainer = card.find('.PLst2a').first().clone();
-      descriptionContainer.find('a, button, [role="button"]').remove();
-
-      let description = stripSeaDescriptionCtas(normalizeText(descriptionContainer.text()));
-      if (!description) {
-        const cardBody = card.clone();
-        cardBody.find('a[data-hook="title"], a, button, [role="button"], img').remove();
-        description = stripSeaDescriptionCtas(
-          normalizeText(cardBody.text().replace(titleText, '').trim())
-        );
-      }
-      if (description.length < 20) {
-        description = 'SEA event details and schedule are available on the event page.';
-      }
-      description = trimTextForEmail(description, 1200);
-
-      const resolvedImageUrl = extractImageUrlFromElement($, element, SEA_EVENTS_URL);
-
-      eventLinks.set(link, {
-        title: titleText,
+      eventLinks.set(parsedEvent.link, {
+        title: parsedEvent.title,
         description,
-        imageUrl: resolvedImageUrl,
-        pubDate
+        imageUrl: parsedEvent.imageUrl,
+        pubDate: parsedEvent.pubDate
       });
-    });
+    }
 
     if (eventLinks.size === 0) {
       console.log('No SEA events found on the events page.');

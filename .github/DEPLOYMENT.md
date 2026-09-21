@@ -63,6 +63,21 @@ Deploy job:
 3. Pipeline monitor:
    - `GET /api/newsletters/monitor/status` with `x-monitor-token`
 
+## Charter Members and Targeted Sends
+
+The deployed API includes `npm run import:charter-members`, which accepts an Excel workbook, deduplicates normalized email addresses against the database, and stages new records as verified but inactive weekly subscribers. Store the workbook under `/home`, because `/home/site/wwwroot` is replaced by ZIP deployment.
+
+Use a dry run before applying:
+
+```bash
+npm run import:charter-members -- "/home/Charter Member Email list .xlsx"
+npm run import:charter-members -- "/home/Charter Member Email list .xlsx" --apply
+```
+
+The scheduled endpoint supports an explicitly authorized `listName: "charter-members"` manual send. Always dry-run first and confirm the recipient count; remove `dryRun` only for the approved send. Keep manual scheduled sends disabled outside approved campaigns.
+
+SEA event aggregation reads `https://seahk.org/events.html#upcoming` and accepts event-card registration links hosted outside the SEA domain, including `forms.gle`.
+
 ## Troubleshooting
 
 If deployment fails:

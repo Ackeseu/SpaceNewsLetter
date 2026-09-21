@@ -6,6 +6,7 @@ All notable changes to the NewSpace Newsletter project will be documented in thi
 
 ### Fixed
 - **SEA Event Updates** - Updated the SEA events scraper for the current event-card markup so upcoming events populate the newsletter's "Updates from SEA" section again.
+  - Retains upcoming cards whose registration link is an external `forms.gle` URL, including NEXT programme events.
 - **OASA Banner Email Rendering** - Fixed issue where OASA logo was not rendering in newsletter emails or appeared as external URL instead of embedded image
   - Optimized `public/oasa-banner.png` from 886KB to 154KB (82.6% reduction) via image resizing (2360×1328px → 700×394px)
   - Identified and corrected `EMAIL_PAYLOAD_SOFT_LIMIT_BYTES` configuration from 3MB to 9.5MB (just below Azure's 10MB hard limit)
@@ -17,6 +18,10 @@ All notable changes to the NewSpace Newsletter project will be documented in thi
   - This setting controls when the email service falls back from inline to external images
   - Recommended value is 9.5MB (default), leaving 0.5MB safety margin below ACS 10MB hard limit
   - Set via: `az webapp config appsettings set ... --settings EMAIL_PAYLOAD_SOFT_LIMIT_BYTES=9500000`
+
+### Added
+- **Charter Member Operations** - Added duplicate-safe Excel staging, separate `charter-members` list labeling, verified-but-inactive staging, admin filtering, and guarded charter-only manual sends.
+- **Delivery Planning** - Documented current sequential-send capacity and the recommended queue/batch work before materially larger list growth.
 
 ### Asset Optimization
 - `EMAIL_FORCE_EXTERNAL_IMAGES`: Disabled (set to false) in Azure App Service settings

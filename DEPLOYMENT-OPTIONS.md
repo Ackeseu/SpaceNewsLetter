@@ -72,6 +72,8 @@ When to use:
    - `/health`
    - `/admin.html`
    - `/api/newsletters/monitor/status`
+4. Do not store operational workbooks in `/home/site/wwwroot`; ZIP deployments replace that directory. Use persistent `/home` storage for import input.
+5. Keep `ALLOW_MANUAL_SCHEDULED_SEND=false` except during an explicitly approved manual campaign.
 
 ---
 
@@ -82,3 +84,7 @@ Recipient-level delivery logs are available after deployment:
 `GET /api/newsletters/monitor/deliveries?email=<email>&date=YYYY-MM-DD`
 
 Requires header: `x-monitor-token`.
+
+## Capacity Note
+
+The current sender is sequential and intentionally throttled. It is suitable for the current roughly 130-recipient list and modest growth, but each recipient also performs preference/article selection and email image processing. Before reaching roughly 300 recipients, move delivery to resumable background batches and cache rendered content and image attachments by preference group.

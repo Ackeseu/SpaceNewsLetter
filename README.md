@@ -10,6 +10,8 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 - 🎯 Topic-based preferences
 - 🔁 Repeat suppression for non-OASA topics after three sends per topic fingerprint
 - 📅 OASA event blurbs render without the site countdown label
+- 👥 Separate charter-member list staging with duplicate protection
+- 🛰️ SEA event sync from `https://seahk.org/events.html#upcoming`, including external registration links
 - ☁️ Azure-native architecture
 - 🔒 Secure unsubscribe mechanism
 - 📱 RESTful API
@@ -42,6 +44,7 @@ A newsletter subscription service focused on NewSpace (astronomy, space explorat
 │   └── services/
 │       ├── newsAggregator.ts  # RSS feed parsing
 │       └── emailService.ts    # Azure Communication Services
+├── src/scripts/importCharterMembers.ts # Charter-member Excel import implementation
 ├── azure-functions/
 │   ├── NewsAggregator/        # Scheduled news aggregation
 │   └── SendNewsletter/        # Scheduled newsletter sending
@@ -229,6 +232,20 @@ Newsletter behavior notes:
 - Subscription frequency is normalized to `daily` or `weekly`; `monthly` is no longer accepted by the API or admin UI.
 - OASA event items are rendered in a dedicated section, and the email renderer removes the website countdown prefix such as `34 days to the event`.
 - Daily and weekly sends suppress non-OASA topics after three deliveries for the same topic fingerprint using `article_topic_send_stats`.
+- SEA events are scraped from `https://seahk.org/events.html#upcoming`; event cards with external registration links such as `forms.gle` are retained.
+- Scheduled sends select only verified, active subscribers whose frequency matches the requested frequency.
+- An explicitly authorized manual send may include `listName: "charter-members"` to target that list without affecting other weekly subscribers.
+
+### Charter Member Import
+
+The production package includes a dry-run-first Excel importer. It normalizes email addresses, removes duplicates inside the workbook, and skips addresses already present in `subscribers`.
+
+```bash
+npm run import:charter-members -- "/home/Charter Member Email list .xlsx"
+npm run import:charter-members -- "/home/Charter Member Email list .xlsx" --apply
+```
+
+Applied records are created with `listName=charter-members`, `isVerified=true`, `isActive=false`, and `frequency=weekly`. No email is sent during import. Activate the cohort only after approval and verify the counts before sending.
 
 ### Monitoring
 

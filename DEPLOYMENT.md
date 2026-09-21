@@ -46,6 +46,8 @@ Set in Azure App Service (`newspace-newsletter-api`):
   - `MONITOR_TOKEN`
   - `MONITOR_ALERT_EMAILS`
   - `MONITOR_MAX_STALE_MINUTES` (recommended `2880` for filtered daily aggregation cadence)
+  - `ALLOW_MANUAL_SCHEDULED_SEND` (keep `false` by default; enable temporarily only for an approved manual send)
+  - `MANUAL_SEND_CONFIRMATION_TOKEN` (required when configured for manual sends)
 - Email payload guard (optional, recommended):
   - `EMAIL_PAYLOAD_SOFT_LIMIT_BYTES` (default `9500000` — sends auto-downgrade through fallback tiers below this byte estimate to stay under the ACS 10 MB hard limit)
 - Image settings (optional):
@@ -106,6 +108,22 @@ Set to `2880` minutes to avoid false "aggregation down" alerts when aggregation 
 - Admin UI: `GET /admin.html`
 - Monitor status: `GET /api/newsletters/monitor/status`
 - Test send (admin token): `POST /api/newsletters/send-test`
+
+## Charter Member Operations
+
+Upload the workbook to persistent `/home` storage in the App Service container, not `/home/site/wwwroot`, because ZIP deployments replace the application directory.
+
+Preview and apply the import from **SSH -> Application**:
+
+```bash
+cd /home/site/wwwroot
+npm run import:charter-members -- "/home/Charter Member Email list .xlsx"
+npm run import:charter-members -- "/home/Charter Member Email list .xlsx" --apply
+```
+
+The importer skips duplicate email addresses and creates new charter members as verified but inactive. They cannot receive newsletters until explicitly activated. The sender processes recipients sequentially with a default 1.2-second gap plus jitter, retries transient provider failures, and records each delivery attempt.
+
+For an approved charter-only manual send, first use `dryRun=true` with `listName=charter-members` and confirm the recipient count. Then remove `dryRun` and retain the manual authorization headers. Keep `ALLOW_MANUAL_SCHEDULED_SEND` disabled again after the send.
 
 ## Notes
 

@@ -1156,9 +1156,10 @@ export const parseSeaEventCardsFromHtml = (html: string): Array<{
       .map((value) => value.trim())
       .filter((value) => !value.startsWith('#'));
 
-    const link = candidateLinks.find((value) => /event-details|event/i.test(value))
-      || card.find('a[href*="event-details"]').first().attr('href')
-      || card.find('a[href*="event"]').first().attr('href')
+    // Prefer the canonical event-details URL, but keep cards whose only link is
+    // an external registration form or another page (e.g. contact.html).
+    const link = candidateLinks.find((value) => /event-details/i.test(value))
+      || candidateLinks[0]
       || '';
 
     if (!link) {

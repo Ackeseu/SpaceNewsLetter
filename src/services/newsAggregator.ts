@@ -1101,6 +1101,12 @@ const isCurrentOrUpcomingSeaEvent = (pubDate?: Date): boolean => {
 
 const isGenericSeaTitle = (title: string): boolean => SEA_EVENTS_GENERIC_TITLES.has(title.trim().toLowerCase());
 
+const slugifySeaEventTitle = (title: string): string => title
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '')
+  .slice(0, 80);
+
 const parseSeaEventDate = (value?: string): Date | undefined => {
   if (!value) {
     return undefined;
@@ -1156,15 +1162,12 @@ export const parseSeaEventCardsFromHtml = (html: string): Array<{
       .map((value) => value.trim())
       .filter((value) => !value.startsWith('#'));
 
-    // Prefer the canonical event-details URL, but keep cards whose only link is
-    // an external registration form or another page (e.g. contact.html).
+    // Prefer the canonical event-details URL, then the card's primary link
+    // (e.g. an external registration form). Cards without any link still
+    // appear in the newsletter via a unique anchor on the SEA events page.
     const link = candidateLinks.find((value) => /event-details/i.test(value))
       || candidateLinks[0]
-      || '';
-
-    if (!link) {
-      return;
-    }
+      || `${SEA_EVENTS_URL}#${slugifySeaEventTitle(titleText) || 'event'}`;
 
     const resolvedLink = resolveAbsoluteUrl(link, SEA_EVENTS_URL) || link;
     const dateFromAttribute = parseSeaEventDate(card.attr('data-event-date') || undefined);

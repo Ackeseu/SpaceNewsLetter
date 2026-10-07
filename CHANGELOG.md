@@ -5,6 +5,7 @@ All notable changes to the NewSpace Newsletter project will be documented in thi
 ## [Unreleased]
 
 ### Fixed
+- **SEA Events Without Links** - Events listed on the SEA events page that have no link at all are now included in the newsletter, falling back to a unique anchor URL on the events page; covers partner/collaborative events without registration or detail pages.
 - **SEA Event Links** - Fixed the SEA event parser dropping upcoming events whose only link is an external registration form (e.g. Microsoft Forms) or another page instead of an `event-details` URL; the parser now prefers event-details links but keeps the card's primary link otherwise.
 - **SEA Event Updates** - Updated the SEA events scraper for the current event-card markup so upcoming events populate the newsletter's "Updates from SEA" section again.
   - Retains upcoming cards whose registration link is an external `forms.gle` URL, including NEXT programme events.

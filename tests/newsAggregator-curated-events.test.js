@@ -38,16 +38,27 @@ const sampleHtml = `
         <a href="https://forms.cloud.microsoft/r/una6t7hMnu" class="btn btn-navy">Register</a>
       </div>
     </div>
+    <div class="event-card" data-event-date="${futureDateKey}">
+      <div class="event-date-box"><div class="day">${futureDay}</div><div class="month">${futureMonth}</div></div>
+      <div class="event-info">
+        <div class="event-title">[Save the Date] SEA Annual Dinner 2026</div>
+        <div class="event-meta"><span>7:00PM</span><span>Hong Kong</span></div>
+        <p>Details to follow.</p>
+      </div>
+    </div>
   </div>
 `;
 
 const parsed = parseSeaEventCardsFromHtml(sampleHtml);
-assert.ok(parsed.length === 2, `expected two parsed event cards, got ${parsed.length}`);
+assert.ok(parsed.length === 3, `expected three parsed event cards, got ${parsed.length}`);
 assert.ok(parsed[0].title.includes('SpaceBiz Dialogues'), 'expected parsed title to include SpaceBiz Dialogues');
 assert.ok(parsed[0].link.includes('event-details'), 'expected parsed link to be resolved from the event card');
 assert.ok(parsed[0].imageUrl.includes('seahk.org'), 'expected parsed image URL to resolve against the SEA domain');
 const registrationCard = parsed.find((entry) => entry.title.includes('CIMA Space Economy Seminar'));
 assert.ok(registrationCard, 'expected the registration-form event card to be kept');
 assert.ok(registrationCard.link.includes('forms.cloud.microsoft'), 'expected the registration link to be used when no event-details link exists');
+const linklessCard = parsed.find((entry) => entry.title.includes('SEA Annual Dinner'));
+assert.ok(linklessCard, 'expected the event card without any link to be kept');
+assert.ok(linklessCard.link.includes('seahk.org/events.html#'), 'expected the linkless card to fall back to a unique SEA events page anchor');
 
 console.log('curated sea event test passed');
